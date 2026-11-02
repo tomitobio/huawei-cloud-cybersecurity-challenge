@@ -1,0 +1,28 @@
+{
+  "name": "huawei-cyberchallenge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Huawei Cloud Cybersecurity Challenge - instructor-led competitive cybersecurity simulation platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @hcc/api",
+    "dev:web": "npm run dev -w @hcc/web",
+    "build": "npm run build -w @hcc/web",
+    "db:generate": "npm run db:generate -w @hcc/api",
+    "db:migrate": "npm run db:migrate -w @hcc/api",
+    "db:seed": "npm run db:seed -w @hcc/api",
+    "test": "npm run test -w @hcc/shared && npm run test -w @hcc/api && npm run test -w @hcc/web",
+    "typecheck": "tsc -b apps/api packages/shared --pretty"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,184 @@
+// Prisma schema for the Huawei Cloud Cybersecurity Challenge platform.
+// All scenario/business data is fictional and simulated.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  CAPTAIN
+  PARTICIPANT
+  AUDIENCE
+}
+
+enum SessionStatus {
+  LOBBY
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum MaturityLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MemberRole {
+  CAPTAIN
+  PARTICIPANT
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  passwordHash String
+  displayName  String
+  role         UserRole         @default(INSTRUCTOR)
+  createdAt    DateTime         @default(now())
+  memberships  TeamMembership[]
+  sessionsLed  WorkshopSession[] @relation("instructor")
+  decisions    SubmittedDecision[] @relation("submitter")
+}
+
+model Scenario {
+  id         String             @id @default(cuid())
+  key        String             @unique
+  name       String
+  version    Int                @default(1)
+  definition Json
+  isActive   Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  sessions   WorkshopSession[]
+}
+
+model WorkshopSession {
+  id           String            @id @default(cuid())
+  name         String
+  joinCode     String            @unique
+  audienceToken String           @unique @default(cuid())
+  status       SessionStatus     @default(LOBBY)
+  instructorId String
+  instructor   User              @relation("instructor", fields: [instructorId], references: [id])
+  scenarioId   String
+  scenario     Scenario          @relation(fields: [scenarioId], references: [id])
+  weights      Json
+  currentRound Int               @default(0)
+  deadlineAt   DateTime?
+  deadlineSeconds Int            @default(180)
+  createdAt    DateTime          @default(now())
+  startedAt    DateTime?
+  endedAt      DateTime?
+  teams        Team[]
+  auditLogs    AuditLog[]
+  insights     RevealedInsight[]
+  report       Report?
+}
+
+model Team {
+  id            String            @id @default(cuid())
+  sessionId     String
+  session       WorkshopSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  name          String
+  color         String            @default("#22d3ee")
+  joinCode      String            @unique
+  budgetStart   Float
+  maturity      MaturityLevel     @default(MEDIUM)
+  createdAt     DateTime          @default(now())
+  state         GameState?
+  members       TeamMembership[]
+  decisions     SubmittedDecision[]
+  metricChanges MetricChange[]
+  history       EventHistory[]
+  @@unique([sessionId, name])
+}
+
+model TeamMembership {
+  id     String     @id @default(cuid())
+  userId String
+  teamId String
+  role   MemberRole @default(PARTICIPANT)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  @@unique([userId, teamId])
+}
+
+model GameState {
+  id        String   @id @default(cuid())
+  teamId    String   @unique
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  data      Json
+  version   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model SubmittedDecision {
+  id            String   @id @default(cuid())
+  teamId        String
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventId       String
+  optionId      String
+  rationale     String   @default("")
+  cost          Float    @default(0)
+  round         Int      @default(0)
+  submittedById String?
+  submittedBy   User?    @relation("submitter", fields: [submittedById], references: [id])
+  createdAt     DateTime @default(now())
+  @@unique([teamId, eventId])
+}
+
+model MetricChange {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventId   String?
+  round     Int      @default(0)
+  deltas    Json
+  resulting Json
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model EventHistory {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  type      String
+  eventId   String?
+  payload   Json
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  sessionId String?
+  session   WorkshopSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String
+  payload   Json
+  createdAt DateTime @default(now())
+}
+
+model RevealedInsight {
+  id         String          @id @default(cuid())
+  sessionId  String
+  session    WorkshopSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  insightKey String
+  revealedAt DateTime        @default(now())
+  @@unique([sessionId, insightKey])
+}
+
+model Report {
+  id        String          @id @default(cuid())
+  sessionId String          @unique
+  session   WorkshopSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime        @default(now())
+}
