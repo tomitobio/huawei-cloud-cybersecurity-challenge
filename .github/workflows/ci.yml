@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Typecheck, tests & build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: workshop
+          POSTGRES_PASSWORD: workshop
+          POSTGRES_DB: huawei_cyberchallenge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workshop"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://workshop:workshop@localhost:5432/huawei_cyberchallenge?schema=public
+      JWT_SECRET: ci-only-not-for-production-0123456789abcdef
+      NODE_ENV: test
+      CLIENT_ORIGIN: http://localhost:5173
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate -w @hcc/api
+
+      - name: Apply database migrations
+        run: npm run db:deploy -w @hcc/api
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests (shared + api + web)
+        run: npm test
+
+      - name: Build web app
+        run: npm run build -w @hcc/web
