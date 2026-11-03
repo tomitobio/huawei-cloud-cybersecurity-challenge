@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useLang } from '../lib/useLang';
-import { getSocket, joinSessionRoom } from '../lib/socket';
+import { getSocket } from '../lib/socket';
 import { Card, EmptyState, SectionTitle, StatusPill } from '../components/ui';
 
 interface AudienceView {

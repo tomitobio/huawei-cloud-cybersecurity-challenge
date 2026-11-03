@@ -5,7 +5,27 @@ build/
 .env.local
 *.log
 coverage/
+*.tsbuildinfo
 .DS_Store
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
 /tmp/
+
+# --- Home-directory noise -------------------------------------------------
+# Used when this repository is initialised directly in a home directory
+# (e.g. /root). Keeps `git status` clean and prevents committing shell
+# history, credentials or tooling state.
+/.bashrc
+/.bash_profile
+/.bash_logout
+/.profile
+/.bash_history
+/.wget-hsts
+/.sudo_as_admin_successful
+/.cache/
+/.config/
+/.local/
+/.npm/
+/.history/
+/.ssh/
+/.opencode/

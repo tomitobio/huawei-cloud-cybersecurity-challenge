@@ -76,6 +76,24 @@ describe('API authorization and gameplay', () => {
     teamBId = res.body.session.teams[1].id;
   });
 
+  it('persists an explicit seed and exposes it on the session console and list', async () => {
+    const res = await instructor
+      .post('/api/sessions')
+      .send({
+        name: `Seeded Session ${stamp}`,
+        scenarioKey: 'ransomware-retail',
+        seed: 4242,
+        teams: [{ name: 'Seed Team', color: '#34d399' }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.session.seed).toBe(4242);
+    createdSessionIds.push(res.body.session.id);
+
+    const list = await instructor.get('/api/sessions');
+    const found = list.body.sessions.find((s: { id: string }) => s.id === res.body.session.id);
+    expect(found.seed).toBe(4242);
+  });
+
   it('a captain joins a team', async () => {
     const res = await captain.post('/api/join').send({ code: teamACode, displayName: 'Cap', role: 'CAPTAIN' });
     expect(res.status).toBe(201);
@@ -283,5 +301,48 @@ describe('scenario editor', () => {
     const scenarioDef = getScenarioByKey('ransomware-retail')!;
     const put = await instructor.put('/api/scenarios/ransomware-retail').send({ scenario: scenarioDef });
     expect(put.status).toBe(400);
+  });
+});
+
+describe('session deletion', () => {
+  let deleteSessionId = '';
+  let deleteTeamId = '';
+
+  beforeAll(async () => {
+    const res = await instructor
+      .post('/api/sessions')
+      .send({
+        name: `Delete Me ${stamp}`,
+        scenarioKey: 'ransomware-retail',
+        teams: [{ name: 'Doomed Team', color: '#22d3ee' }],
+      });
+    expect(res.status).toBe(201);
+    deleteSessionId = res.body.session.id;
+    deleteTeamId = res.body.session.teams[0].id;
+  });
+
+  it('rejects unauthenticated deletion', async () => {
+    const res = await request(app).del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('a non-instructor cannot delete a session', async () => {
+    const res = await captain.del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('the instructor deletes their session and all related data is removed', async () => {
+    const res = await instructor.del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(200);
+
+    const gone = await prisma.workshopSession.findUnique({ where: { id: deleteSessionId } });
+    expect(gone).toBeNull();
+    const teamGone = await prisma.team.findUnique({ where: { id: deleteTeamId } });
+    expect(teamGone).toBeNull();
+  });
+
+  it('returns 404 when deleting an unknown session', async () => {
+    const res = await instructor.del('/api/sessions/does-not-exist');
+    expect(res.status).toBe(404);
   });
 });

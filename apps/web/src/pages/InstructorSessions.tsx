@@ -17,6 +17,7 @@ export function SessionsPage() {
   const [name, setName] = useState('');
   const [scenarioKey, setScenarioKey] = useState('');
   const [teamNames, setTeamNames] = useState('Equipo Alfa\nEquipo Bravo');
+  const [seed, setSeed] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -45,10 +46,26 @@ export function SessionsPage() {
         .map((n) => n.trim())
         .filter(Boolean)
         .map((n, i) => ({ name: n, color: ['#22d3ee', '#f472b6', '#fbbf24', '#34d399', '#a78bfa'][i % 5] }));
-      const res = await api.post<{ session: { id: string } }>('/sessions', { name, scenarioKey, teams });
+      const res = await api.post<{ session: { id: string } }>('/sessions', {
+        name,
+        scenarioKey,
+        seed: seed.trim() === '' ? undefined : Number(seed.trim()),
+        teams,
+      });
       navigate(`/sessions/${res.session.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  async function remove(session: SessionListItem) {
+    if (!window.confirm(t('sessions.deleteConfirm', { name: session.name }))) return;
+    setError(null);
+    try {
+      await api.del(`/sessions/${session.id}`);
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('sessions.deleteError'));
     }
   }
 
@@ -62,6 +79,8 @@ export function SessionsPage() {
           </button>
         }
       />
+
+      {error && <Banner kind="error">{error}</Banner>}
 
       {showForm && (
         <Card>
@@ -88,11 +107,17 @@ export function SessionsPage() {
                 onChange={(e) => setTeamNames(e.target.value)}
               />
             </div>
-            {error && (
-              <div className="sm:col-span-2">
-                <Banner kind="error">{error}</Banner>
-              </div>
-            )}
+            <div>
+              <label className="label">{t('sessions.seed')}</label>
+              <input
+                className="input font-mono"
+                inputMode="numeric"
+                placeholder={t('sessions.seedPlaceholder')}
+                value={seed}
+                onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+              <p className="mt-1 text-xs text-slate-500">{t('sessions.seedHint')}</p>
+            </div>
             <div className="sm:col-span-2">
               <button className="btn-primary">{t('sessions.create')}</button>
             </div>
@@ -122,9 +147,22 @@ export function SessionsPage() {
                 </span>
                 <span className="ml-auto font-mono text-accent-cyan">{s.joinCode}</span>
               </div>
-              <Link to={`/sessions/${s.id}`} className="btn-ghost mt-4">
-                {t('sessions.open')}
-              </Link>
+              <p className="mt-1 text-xs text-slate-500">
+                {t('sessions.seed')}: <span className="font-mono">{s.seed}</span>
+              </p>
+              <div className="mt-4 flex items-center gap-2">
+                <Link to={`/sessions/${s.id}`} className="btn-ghost flex-1">
+                  {t('sessions.open')}
+                </Link>
+                <button
+                  className="btn-ghost text-accent hover:border-accent/50"
+                  title={t('sessions.delete')}
+                  aria-label={t('sessions.delete')}
+                  onClick={() => void remove(s)}
+                >
+                  🗑
+                </button>
+              </div>
             </Card>
           ))}
         </div>

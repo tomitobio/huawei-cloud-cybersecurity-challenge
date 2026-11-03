@@ -82,6 +82,12 @@ export interface DecisionOption {
   /** Tags describing what this option mitigates (informational). */
   mitigates?: string[];
   isRecovery?: boolean;
+  /**
+   * Optional reproducibility knob in [0, 1]. When > 0 the engine jitters this
+   * option's `immediate`/`delayed` magnitudes by +/- variance, driven by the
+   * session seed. Defaults to 0 (fully deterministic — current behaviour).
+   */
+  variance?: number;
 }
 
 export interface ScenarioEvent {
@@ -116,7 +122,7 @@ export interface ArchitectureNode {
   control?: ControlId;
 }
 
-export interface ScoreWeights extends Record<MetricKey, number> {}
+export type ScoreWeights = Record<MetricKey, number>;
 
 export interface Scenario {
   key: string;
@@ -167,6 +173,10 @@ export interface GameStateData {
   version: number;
   pendingDelayed: MetricDeltas;
   decisions: RecordedDecision[];
+  /** Session seed driving reproducible variability. Missing => 0 (legacy). */
+  seed?: number;
+  /** Number of decisions resolved so far — advances the RNG stream. */
+  rngCounter?: number;
 }
 
 export type SessionStatus = 'LOBBY' | 'ACTIVE' | 'PAUSED' | 'ENDED';

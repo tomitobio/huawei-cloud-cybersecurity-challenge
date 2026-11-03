@@ -16,11 +16,16 @@
     "db:migrate": "npm run db:migrate -w @hcc/api",
     "db:seed": "npm run db:seed -w @hcc/api",
     "test": "npm run test -w @hcc/shared && npm run test -w @hcc/api && npm run test -w @hcc/web",
+    "lint": "eslint .",
     "typecheck": "tsc -b apps/api packages/shared --pretty"
   },
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
     "concurrently": "^9.0.1",
-    "typescript": "^5.5.4"
+    "eslint": "^9.13.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.11.0"
   },
   "engines": {
     "node": ">=20"

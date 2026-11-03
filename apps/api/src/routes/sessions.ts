@@ -49,6 +49,7 @@ sessionRouter.get(
         teamCount: s._count.teams,
         scenarioKey: s.scenario.key,
         scenarioName: s.scenario.name,
+        seed: s.seed,
         createdAt: s.createdAt,
       })),
     });
@@ -144,6 +145,7 @@ sessionRouter.post(
   asyncHandler<AuthedRequest>(async (req, res) => {
     await assertInstructor(req.user!.sub, req.user!.role, req.params.id);
     const input = createTeamSchema.parse(req.body);
+    const sessionRow = await prisma.workshopSession.findUnique({ where: { id: req.params.id } });
     const scenario = await loadScenarioForSession(req.params.id);
     const team = await prisma.team.create({
       data: {
@@ -160,7 +162,7 @@ sessionRouter.post(
       start: { ...scenario.start, budget: team.budgetStart, maturity: team.maturity.toLowerCase() as 'low' | 'medium' | 'high' },
     };
     await prisma.gameState.create({
-      data: { teamId: team.id, data: initGameState(team.id, scenarioForTeam) as unknown as object },
+      data: { teamId: team.id, data: initGameState(team.id, scenarioForTeam, sessionRow?.seed ?? 0) as unknown as object },
     });
     await audit(req.params.id, req.user!.sub, 'team.created', { name: team.name });
     res.status(201).json({ team: { id: team.id, name: team.name, joinCode: team.joinCode } });
@@ -186,5 +188,24 @@ sessionRouter.get(
       take: 200,
     });
     res.json({ audit: logs.map((l) => ({ action: l.action, payload: l.payload, createdAt: l.createdAt })) });
+  }),
+);
+
+sessionRouter.delete(
+  '/sessions/:id',
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const session = await assertInstructor(req.user!.sub, req.user!.role, req.params.id);
+    // Record a *global* audit entry (sessionId: null) so it survives the cascade
+    // delete of the session and everything attached to it.
+    await prisma.auditLog.create({
+      data: {
+        sessionId: null,
+        actorId: req.user!.sub,
+        action: 'session.deleted',
+        payload: { sessionId: session.id, name: session.name } as object,
+      },
+    });
+    await prisma.workshopSession.delete({ where: { id: session.id } });
+    res.json({ ok: true });
   }),
 );

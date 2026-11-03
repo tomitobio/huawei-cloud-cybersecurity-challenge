@@ -14,7 +14,6 @@ import {
   resolveNextEventId,
   type DecisionOption,
   type GameStateData,
-  type LocalizedText,
   type Scenario,
   DEFAULT_WEIGHTS,
 } from '@hcc/shared';
@@ -53,8 +52,14 @@ export async function loadScenarioForSession(sessionId: string): Promise<Scenari
 export interface CreateSessionInput {
   name: string;
   scenarioKey: string;
+  seed?: number;
   weights?: Record<string, number>;
   teams?: { name: string; color?: string; budget?: number; maturity?: 'low' | 'medium' | 'high' }[];
+}
+
+/** A random 31-bit seed for workshops that do not pin one explicitly. */
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0x7fffffff);
 }
 
 export async function createSession(instructorId: string, input: CreateSessionInput) {
@@ -63,6 +68,7 @@ export async function createSession(instructorId: string, input: CreateSessionIn
   const weights = input.weights
     ? normalizeWeights({ ...DEFAULT_WEIGHTS, ...input.weights } as never)
     : def.weights;
+  const seed = input.seed ?? randomSeed();
 
   const joinCode = await uniqueSessionCode();
   const session = await prisma.workshopSession.create({
@@ -72,6 +78,7 @@ export async function createSession(instructorId: string, input: CreateSessionIn
       instructorId,
       scenarioId: scenarioRow.id,
       weights: weights as unknown as object,
+      seed,
       status: 'LOBBY',
     },
   });
@@ -100,7 +107,11 @@ export async function createSession(instructorId: string, input: CreateSessionIn
       start: { ...def.start, budget: team.budgetStart, maturity: team.maturity.toLowerCase() as 'low' | 'medium' | 'high' },
     };
     await prisma.gameState.create({
-      data: { teamId: team.id, data: initGameState(team.id, scenarioForTeam) as unknown as object, version: 0 },
+      data: {
+        teamId: team.id,
+        data: initGameState(team.id, scenarioForTeam, seed) as unknown as object,
+        version: 0,
+      },
     });
   }
 
@@ -190,6 +201,7 @@ export async function getSessionConsole(sessionId: string) {
     deadlineSeconds: session.deadlineSeconds,
     startedAt: session.startedAt,
     endedAt: session.endedAt,
+    seed: session.seed,
     weights: session.weights,
     scenario: {
       key: scenario.key,
@@ -212,8 +224,6 @@ export async function getSessionConsole(sessionId: string) {
     audit: session.auditLogs.map((a) => ({ action: a.action, payload: a.payload, createdAt: a.createdAt })),
   };
 }
-
-type ConsoleTeam = { id: string; name: string; color: string; state: GameStateData | null; score: number };
 
 function buildLeaderboard(
   teams: { id: string; name: string; color: string; state: GameStateData | null; score: number }[],
@@ -247,7 +257,7 @@ export async function getTeamWorkspace(teamId: string) {
   });
   if (!team) throw ApiError.notFound('Team not found');
   const scenario = team.session.scenario.definition as unknown as Scenario;
-  const state = team.state ? asState(team.state.data) : initGameState(teamId, scenario);
+  const state = team.state ? asState(team.state.data) : initGameState(teamId, scenario, team.session.seed);
 
   const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
   const options: (DecisionOption & { available: boolean; reason?: string })[] = event
@@ -604,6 +614,7 @@ export async function getAudienceView(token: string) {
     status: session.status,
     currentRound: session.currentRound,
     deadlineAt: session.deadlineAt,
+    seed: session.seed,
     organization: scenario.organization,
     leaderboard,
     insights: session.insights.map((i) => ({ key: i.insightKey, card: getProductCard(i.insightKey) ?? null })),

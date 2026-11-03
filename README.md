@@ -248,8 +248,9 @@ universal solution).
 - Team creation uses join codes; there is no email invitation flow.
 - Scenario authoring edits events as JSON (metadata has a structured form); there is no
   drag-and-drop event builder.
-- Variable outcomes use a deterministic engine (no randomness yet) — intentional for
-  reproducibility.
+- Variable outcomes: the engine is deterministic and replayable, and supports optional
+  **seeded variability** (a `variance` factor per option plus one seed per session). The
+  same seed always reproduces the same run, so results stay fully explainable.
 - Docker files are provided but were not run in the build VM (no Docker available).
 
 ---

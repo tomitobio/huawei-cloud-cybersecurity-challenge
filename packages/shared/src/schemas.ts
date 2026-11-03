@@ -46,6 +46,7 @@ export const decisionOptionSchema = z.object({
   risks: z.array(localizedTextSchema).optional(),
   mitigates: z.array(z.string()).optional(),
   isRecovery: z.boolean().optional(),
+  variance: z.number().min(0).max(1).optional(),
 });
 
 export const scenarioEventSchema = z.object({
@@ -123,6 +124,8 @@ export const registerSchema = z.object({
 export const createSessionSchema = z.object({
   name: z.string().min(1).max(120),
   scenarioKey: z.string().min(1),
+  /** Reproducibility seed. If omitted the server generates one. */
+  seed: z.number().int().min(0).max(2147483647).optional(),
   weights: z.record(metricKeySchema, z.number()).optional(),
   teams: z
     .array(
@@ -171,4 +174,6 @@ export const previewScenarioSchema = z.object({
   scenario: scenarioSchema.optional(),
   /** Option id chosen at each step (by index); unknown ids fall back to default. */
   choices: z.array(z.string()).max(100).optional(),
+  /** Seed for reproducing variability in the preview. */
+  seed: z.number().int().min(0).max(2147483647).optional(),
 });

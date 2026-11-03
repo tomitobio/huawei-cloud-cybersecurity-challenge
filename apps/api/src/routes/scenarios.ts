@@ -105,7 +105,7 @@ scenarioRouter.post(
     const problems = validateScenario(scenario);
     let result;
     try {
-      result = simulatePlaythrough(scenario, parsed.data.choices ?? []);
+      result = simulatePlaythrough(scenario, parsed.data.choices ?? [], parsed.data.seed ?? 0);
     } catch (err) {
       throw ApiError.badRequest(`Preview failed: ${(err as Error).message}`);
     }
