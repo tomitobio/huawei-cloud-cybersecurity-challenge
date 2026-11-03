@@ -72,6 +72,16 @@ export function TeamWorkspacePage() {
   const deadlinePassed = data.session.deadlineAt ? new Date(data.session.deadlineAt).getTime() < Date.now() : false;
   const locked = data.session.status === 'ENDED' || data.state.status !== 'active';
   const canAct = data.session.status === 'ACTIVE' && !locked && !deadlinePassed;
+  // Explains *why* the action buttons are disabled, shown as a tooltip.
+  const disabledReason = canAct
+    ? undefined
+    : locked
+      ? t('team.locked')
+      : data.session.status === 'PAUSED'
+        ? t('team.paused')
+        : data.session.status !== 'ACTIVE'
+          ? t('team.waitingStart')
+          : t('team.deadlinePassed');
 
   async function submitDecision() {
     if (!teamId || !selected || !data) return;
@@ -82,21 +92,35 @@ export function TeamWorkspacePage() {
       setMessage(t('team.submitted'));
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error');
+      setError(err instanceof ApiError ? err.message : t('team.actionFailed'));
       if (err instanceof ApiError && err.code === 'STALE_STATE') await load();
     }
   }
 
   async function propose(optionId: string) {
     if (!teamId) return;
-    await api.post(`/teams/${teamId}/proposals`, { optionId, rationale });
-    await load();
+    setError(null);
+    setMessage(null);
+    try {
+      await api.post(`/teams/${teamId}/proposals`, { optionId, rationale });
+      setMessage(t('team.proposalSent'));
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('team.actionFailed'));
+    }
   }
 
   async function vote(proposalId: string) {
     if (!teamId) return;
-    await api.post(`/teams/${teamId}/vote`, { proposalId });
-    await load();
+    setError(null);
+    setMessage(null);
+    try {
+      await api.post(`/teams/${teamId}/vote`, { proposalId });
+      setMessage(t('team.voteSent'));
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('team.actionFailed'));
+    }
   }
 
   const event = data.currentEvent;
@@ -165,6 +189,7 @@ export function TeamWorkspacePage() {
                   selected={selected === opt.id}
                   submitted={data.submittedDecision?.optionId === opt.id}
                   disabled={!canAct}
+                  disabledTitle={disabledReason}
                   onSelect={() => setSelected(opt.id)}
                   onPropose={() => void propose(opt.id)}
                 />
@@ -183,7 +208,12 @@ export function TeamWorkspacePage() {
                 placeholder={data.submittedDecision?.rationale ?? ''}
               />
               <div className="mt-3 flex items-center gap-3">
-                <button className="btn-primary" disabled={!canAct || !isCaptain || !selected} onClick={() => void submitDecision()}>
+                <button
+                  className="btn-primary"
+                  disabled={!canAct || !isCaptain || !selected}
+                  title={!canAct ? disabledReason : !isCaptain ? t('team.onlyCaptain') : undefined}
+                  onClick={() => void submitDecision()}
+                >
                   {data.submittedDecision ? `↻ ${t('team.submit')}` : t('team.submit')}
                 </button>
                 {!isCaptain && <span className="text-xs text-slate-500">{t('team.onlyCaptain')}</span>}
@@ -210,7 +240,7 @@ export function TeamWorkspacePage() {
                         <span className="text-xs text-slate-500">— {p.payload.by}</span>
                         {p.payload.rationale && <span className="truncate text-xs italic text-slate-500">“{p.payload.rationale}”</span>}
                         <span className="ml-auto chip">{votes} ★</span>
-                        <button className="btn-ghost px-2 py-1 text-xs" disabled={!canAct} onClick={() => void vote(p.id)}>
+                        <button className="btn-ghost px-2 py-1 text-xs" disabled={!canAct} title={disabledReason} onClick={() => void vote(p.id)}>
                           {t('team.vote')}
                         </button>
                       </li>
@@ -283,6 +313,7 @@ function OptionCard({
   selected,
   submitted,
   disabled,
+  disabledTitle,
   onSelect,
   onPropose,
 }: {
@@ -290,6 +321,7 @@ function OptionCard({
   selected: boolean;
   submitted: boolean;
   disabled: boolean;
+  disabledTitle?: string;
   onSelect: () => void;
   onPropose: () => void;
 }) {
@@ -340,6 +372,7 @@ function OptionCard({
             <button
               className="btn-ghost px-2 py-1 text-xs"
               disabled={disabled || unavailable}
+              title={disabled ? disabledTitle : unavailable ? reason : undefined}
               onClick={(e) => {
                 e.stopPropagation();
                 onPropose();

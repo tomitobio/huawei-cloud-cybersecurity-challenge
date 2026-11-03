@@ -190,3 +190,22 @@ sessionRouter.get(
     res.json({ audit: logs.map((l) => ({ action: l.action, payload: l.payload, createdAt: l.createdAt })) });
   }),
 );
+
+sessionRouter.delete(
+  '/sessions/:id',
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const session = await assertInstructor(req.user!.sub, req.user!.role, req.params.id);
+    // Record a *global* audit entry (sessionId: null) so it survives the cascade
+    // delete of the session and everything attached to it.
+    await prisma.auditLog.create({
+      data: {
+        sessionId: null,
+        actorId: req.user!.sub,
+        action: 'session.deleted',
+        payload: { sessionId: session.id, name: session.name } as object,
+      },
+    });
+    await prisma.workshopSession.delete({ where: { id: session.id } });
+    res.json({ ok: true });
+  }),
+);

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ProductCard } from '@hcc/shared';
 import { api } from '../lib/api';
+import { copyToClipboard } from '../lib/clipboard';
 import { useLang } from '../lib/useLang';
 import { getSocket, joinSessionRoom } from '../lib/socket';
 import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
@@ -74,6 +75,14 @@ export function ConsolePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
     }
+  }
+
+  async function copy(text: string) {
+    setError(null);
+    setMessage(null);
+    const ok = await copyToClipboard(text);
+    if (ok) setMessage(t('common.copied'));
+    else setError(t('common.copyFailed'));
   }
 
   const team = useMemo(() => data?.teams.find((x) => x.id === selectedTeam), [data, selectedTeam]);
@@ -167,19 +176,12 @@ export function ConsolePage() {
             <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-base-700 pt-3 text-xs">
               <span className="text-slate-500">{t('console.audienceLink')}:</span>
               <code className="rounded bg-base-900 px-2 py-1 text-accent-cyan">{audienceUrl}</code>
-              <button
-                className="btn-ghost px-2 py-1 text-xs"
-                onClick={() => void navigator.clipboard.writeText(audienceUrl).then(() => setMessage(t('common.copied')))}
-              >
+              <button className="btn-ghost px-2 py-1 text-xs" onClick={() => void copy(audienceUrl)}>
                 {t('common.copy')}
               </button>
               <button
                 className="btn-ghost px-2 py-1 text-xs"
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(data.teams.map((tm) => `${tm.name}: ${tm.joinCode}`).join('\n'))
-                    .then(() => setMessage(t('common.copied')))
-                }
+                onClick={() => void copy(data.teams.map((tm) => `${tm.name}: ${tm.joinCode}`).join('\n'))}
               >
                 {t('console.copyCodes')}
               </button>

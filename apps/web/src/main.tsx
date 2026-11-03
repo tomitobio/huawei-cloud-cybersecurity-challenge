@@ -4,14 +4,17 @@ import { BrowserRouter } from 'react-router-dom';
 import './lib/i18n';
 import './index.css';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './lib/auth';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

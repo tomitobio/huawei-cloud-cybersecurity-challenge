@@ -303,3 +303,46 @@ describe('scenario editor', () => {
     expect(put.status).toBe(400);
   });
 });
+
+describe('session deletion', () => {
+  let deleteSessionId = '';
+  let deleteTeamId = '';
+
+  beforeAll(async () => {
+    const res = await instructor
+      .post('/api/sessions')
+      .send({
+        name: `Delete Me ${stamp}`,
+        scenarioKey: 'ransomware-retail',
+        teams: [{ name: 'Doomed Team', color: '#22d3ee' }],
+      });
+    expect(res.status).toBe(201);
+    deleteSessionId = res.body.session.id;
+    deleteTeamId = res.body.session.teams[0].id;
+  });
+
+  it('rejects unauthenticated deletion', async () => {
+    const res = await request(app).del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('a non-instructor cannot delete a session', async () => {
+    const res = await captain.del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('the instructor deletes their session and all related data is removed', async () => {
+    const res = await instructor.del(`/api/sessions/${deleteSessionId}`);
+    expect(res.status).toBe(200);
+
+    const gone = await prisma.workshopSession.findUnique({ where: { id: deleteSessionId } });
+    expect(gone).toBeNull();
+    const teamGone = await prisma.team.findUnique({ where: { id: deleteTeamId } });
+    expect(teamGone).toBeNull();
+  });
+
+  it('returns 404 when deleting an unknown session', async () => {
+    const res = await instructor.del('/api/sessions/does-not-exist');
+    expect(res.status).toBe(404);
+  });
+});

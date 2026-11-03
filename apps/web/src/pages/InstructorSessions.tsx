@@ -58,6 +58,17 @@ export function SessionsPage() {
     }
   }
 
+  async function remove(session: SessionListItem) {
+    if (!window.confirm(t('sessions.deleteConfirm', { name: session.name }))) return;
+    setError(null);
+    try {
+      await api.del(`/sessions/${session.id}`);
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('sessions.deleteError'));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <SectionTitle
@@ -68,6 +79,8 @@ export function SessionsPage() {
           </button>
         }
       />
+
+      {error && <Banner kind="error">{error}</Banner>}
 
       {showForm && (
         <Card>
@@ -105,11 +118,6 @@ export function SessionsPage() {
               />
               <p className="mt-1 text-xs text-slate-500">{t('sessions.seedHint')}</p>
             </div>
-            {error && (
-              <div className="sm:col-span-2">
-                <Banner kind="error">{error}</Banner>
-              </div>
-            )}
             <div className="sm:col-span-2">
               <button className="btn-primary">{t('sessions.create')}</button>
             </div>
@@ -142,9 +150,19 @@ export function SessionsPage() {
               <p className="mt-1 text-xs text-slate-500">
                 {t('sessions.seed')}: <span className="font-mono">{s.seed}</span>
               </p>
-              <Link to={`/sessions/${s.id}`} className="btn-ghost mt-4">
-                {t('sessions.open')}
-              </Link>
+              <div className="mt-4 flex items-center gap-2">
+                <Link to={`/sessions/${s.id}`} className="btn-ghost flex-1">
+                  {t('sessions.open')}
+                </Link>
+                <button
+                  className="btn-ghost text-accent hover:border-accent/50"
+                  title={t('sessions.delete')}
+                  aria-label={t('sessions.delete')}
+                  onClick={() => void remove(s)}
+                >
+                  🗑
+                </button>
+              </div>
             </Card>
           ))}
         </div>
