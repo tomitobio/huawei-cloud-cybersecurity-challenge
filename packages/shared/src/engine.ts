@@ -7,7 +7,6 @@ import {
   type Metrics,
   type Scenario,
   type ScenarioEvent,
-  METRIC_KEYS,
 } from './types';
 import { applyDeltas, MATURITY_BASELINE, computeFinalScore } from './scoring';
 

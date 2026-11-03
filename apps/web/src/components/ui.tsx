@@ -151,61 +151,6 @@ function calc(deadlineAt: string | null): number {
   return Math.floor((new Date(deadlineAt).getTime() - Date.now()) / 1000);
 }
 
-export function InsightCard({
-  card,
-}: {
-  card: {
-    displayName: string;
-    domain: { es: string; en: string };
-    businessProblem: { es: string; en: string };
-    capabilities: { es: string; en: string }[];
-    limitations: { es: string; en: string }[];
-    dependencies: { es: string; en: string }[];
-    deploymentContext: { es: string; en: string };
-    docs: { label: string; url: string }[];
-    demoFollowUp: { es: string; en: string };
-  };
-  lang?: 'es' | 'en';
-}) {
-  return (
-    <div className="card card-pad space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-accent-cyan">{card.displayName}</h3>
-      </div>
-      <p className="text-xs text-slate-400">{card.businessProblem.es}</p>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Capacidades</p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-300">
-          {card.capabilities.map((c, i) => (
-            <li key={i}>{c.es}</li>
-          ))}
-        </ul>
-      </div>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Limitaciones</p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-400">
-          {card.limitations.map((c, i) => (
-            <li key={i}>{c.es}</li>
-          ))}
-        </ul>
-      </div>
-      <div className="flex flex-wrap gap-2 pt-1">
-        {card.docs.map((d) => (
-          <a
-            key={d.url}
-            href={d.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-accent-cyan underline decoration-dotted hover:text-accent-cyan/80"
-          >
-            {d.label} ↗
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function EmptyState({ message }: { message: string }) {
   return (
     <div className="rounded-lg border border-dashed border-base-600 p-6 text-center text-sm text-slate-500">

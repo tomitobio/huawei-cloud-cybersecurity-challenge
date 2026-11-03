@@ -2,7 +2,6 @@ import { prisma } from '../db';
 import { ApiError } from '../lib/http';
 import {
   finalScoreFor,
-  getEvent,
   getProductCard,
   METRIC_KEYS,
   METRIC_LABELS,

@@ -1,6 +1,6 @@
 import { Server as HttpServer } from 'node:http';
 import { Server as IoServer, type Socket } from 'socket.io';
-import { env, isOriginAllowed } from './env';
+import { isOriginAllowed } from './env';
 import { AUTH_COOKIE, verifyToken } from './lib/tokens';
 import { prisma } from './db';
 

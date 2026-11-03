@@ -14,7 +14,6 @@ import {
   resolveNextEventId,
   type DecisionOption,
   type GameStateData,
-  type LocalizedText,
   type Scenario,
   DEFAULT_WEIGHTS,
 } from '@hcc/shared';
@@ -212,8 +211,6 @@ export async function getSessionConsole(sessionId: string) {
     audit: session.auditLogs.map((a) => ({ action: a.action, payload: a.payload, createdAt: a.createdAt })),
   };
 }
-
-type ConsoleTeam = { id: string; name: string; color: string; state: GameStateData | null; score: number };
 
 function buildLeaderboard(
   teams: { id: string; name: string; color: string; state: GameStateData | null; score: number }[],

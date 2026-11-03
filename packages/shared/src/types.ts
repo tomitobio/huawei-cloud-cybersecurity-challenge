@@ -116,7 +116,7 @@ export interface ArchitectureNode {
   control?: ControlId;
 }
 
-export interface ScoreWeights extends Record<MetricKey, number> {}
+export type ScoreWeights = Record<MetricKey, number>;
 
 export interface Scenario {
   key: string;
