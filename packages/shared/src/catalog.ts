@@ -57,7 +57,7 @@ export const PRODUCT_CATALOG: ProductCard[] = [
       es: 'Demostrar el panel de activos y el flujo de investigación de una alerta de host en un entorno de demostración.',
       en: 'Demonstrate the asset dashboard and the host-alert investigation flow in a demonstration environment.',
     },
-    scenarioEvents: ['e2-host-alert', 'e3-spread', 'e3b-spread-severe'],
+    scenarioEvents: ['e2-host-alert', 'e3-spread'],
   },
   {
     key: 'cfw',
@@ -84,7 +84,7 @@ export const PRODUCT_CATALOG: ProductCard[] = [
     dependencies: [{ es: 'Se apoya en una topología de red y etiquetado correctos para aplicar políticas precisas.', en: 'Relies on a correct network topology and tagging to apply precise policies.' }],
     docs: [{ label: 'Huawei Cloud CFW documentation', url: 'https://support.huaweicloud.com/intl/en-us/cfw/index.html' }],
     demoFollowUp: { es: 'Mostrar la vista de flujos y la creación de una política de bloqueo saliente.', en: 'Show the flow view and the creation of an outbound blocking policy.' },
-    scenarioEvents: ['e2-host-alert', 'e3-spread', 'e3b-spread-severe', 'e4-admin'],
+    scenarioEvents: ['e2-host-alert', 'e3-spread', 'e4-admin'],
   },
   {
     key: 'waf',

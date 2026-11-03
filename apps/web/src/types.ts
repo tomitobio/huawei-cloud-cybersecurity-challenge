@@ -133,8 +133,20 @@ export interface OptionData {
   scoreDelta?: number;
   riskLevel?: string;
   risks?: LocalizedText[];
+  tags?: string[];
+  kind?: 'action' | 'investigate';
+  premium?: boolean;
+  premiumOnFocus?: boolean;
   available: boolean;
   reason?: string;
+}
+
+/** An ambiguous signal as exposed to teams (truth only when revealed). */
+export interface SignalData {
+  id: string;
+  text: LocalizedText;
+  revealed: boolean;
+  truth?: 'true' | 'false' | 'partial';
 }
 
 export interface ProposalData {
@@ -171,6 +183,9 @@ export interface TeamWorkspaceData {
     businessImpact?: LocalizedText;
     controlsInPlay: ControlId[];
     options: OptionData[];
+    signals?: SignalData[];
+    hypotheses?: LocalizedText[];
+    clarity?: number;
   } | null;
   submittedDecision: { optionId: string; rationale: string; cost: number; createdAt: string } | null;
   proposals: ProposalData[];

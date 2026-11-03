@@ -39,7 +39,7 @@ export function firstEventId(scenario: Scenario): string | null {
 export function initGameState(teamId: string, scenario: Scenario, seed = 0): GameStateData {
   const baseline = { ...MATURITY_BASELINE[scenario.start.maturity] };
   const metrics = applyDeltas(baseline, scenario.start.baseMetrics);
-  return {
+  const state: GameStateData = {
     teamId,
     currentEventId: firstEventId(scenario),
     completedEventIds: [],
@@ -53,7 +53,172 @@ export function initGameState(teamId: string, scenario: Scenario, seed = 0): Gam
     decisions: [],
     seed,
     rngCounter: 0,
+    hand: [],
+    usedCards: [],
+    remainingPool: scenario.deck ? [...scenario.deck.pool] : [],
+    knowledge: { revealedSignals: [], clarity: 0 },
   };
+  return prepareActiveEvent(scenario, state);
+}
+
+// --- Card-deck machinery ------------------------------------------------------
+
+function hashString(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h = Math.imul(h ^ value.charCodeAt(i), 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Lookup of all cards declared by a deck-based scenario. */
+export function cardIndex(scenario: Scenario): Map<string, DecisionOption> {
+  const map = new Map<string, DecisionOption>();
+  for (const card of scenario.cards ?? []) map.set(card.id, card);
+  return map;
+}
+
+/**
+ * Apply focus-premium pricing to a card for a given event: when a
+ * `premiumOnFocus` card's tags intersect the event's `focusTags`, its cost and
+ * score are scaled by `economy.focus`. Pure; returns a copy when scaled.
+ */
+export function effectiveCard(
+  card: DecisionOption,
+  event: ScenarioEvent,
+  scenario: Scenario,
+): DecisionOption {
+  if (!card.premiumOnFocus) return card;
+  const focus = new Set(event.focusTags ?? []);
+  const matches = (card.tags ?? []).some((tag) => focus.has(tag));
+  if (!matches) return card;
+  const mult = scenario.economy?.focus ?? { costMultiplier: 1, scoreMultiplier: 1 };
+  return {
+    ...card,
+    cost: Math.round(card.cost * mult.costMultiplier),
+    scoreDelta: Math.round((card.scoreDelta ?? 0) * mult.scoreMultiplier * 100) / 100,
+    premium: true,
+  };
+}
+
+/**
+ * The cards currently presented for an event. Deck scenarios resolve the stored
+ * hand (with focus-premium pricing); legacy scenarios use `event.options`.
+ */
+export function getEventCards(
+  scenario: Scenario,
+  event: ScenarioEvent,
+  state: GameStateData,
+): DecisionOption[] {
+  if (scenario.deck && scenario.cards?.length) {
+    const map = cardIndex(scenario);
+    const ids = state.hand ?? [];
+    if (!ids.length) return (event.options ?? []).map((c) => effectiveCard(c, event, scenario));
+    return ids
+      .map((id) => map.get(id))
+      .filter((c): c is DecisionOption => Boolean(c))
+      .map((c) => effectiveCard(c, event, scenario));
+  }
+  return (event.options ?? []).map((c) => effectiveCard(c, event, scenario));
+}
+
+/**
+ * Draw a weighted sample (without replacement) of pool cards for an event.
+ * Deterministic per (team, seed, round). Focus tags and accumulated clarity
+ * increase the weight of relevant cards.
+ */
+function drawPool(
+  scenario: Scenario,
+  event: ScenarioEvent,
+  state: GameStateData,
+  pool: string[],
+  count: number,
+): string[] {
+  const map = cardIndex(scenario);
+  const focus = new Set(event.focusTags ?? []);
+  const clarity = state.knowledge?.clarity ?? 0;
+  const candidates: { id: string; weight: number }[] = [];
+  for (const id of pool) {
+    const card = map.get(id);
+    if (!card) continue;
+    if (!conditionMet(card.requires, state)) continue;
+    const matches = (card.tags ?? []).filter((tag) => focus.has(tag)).length;
+    let weight = card.baseWeight ?? 1;
+    weight *= 1 + matches * 1.5;
+    if (matches > 0) weight *= 1 + clarity * 0.5;
+    candidates.push({ id, weight: Math.max(0.0001, weight) });
+  }
+
+  const seedBase = ((state.seed ?? 0) ^ hashString(state.teamId)) >>> 0;
+  const rng = mulberry32(mixSeed(seedBase, state.completedEventIds.length + 1));
+  const chosen: string[] = [];
+  const n = Math.min(count, candidates.length);
+  for (let k = 0; k < n; k += 1) {
+    const total = candidates.reduce((acc, c) => acc + c.weight, 0);
+    let r = rng() * total;
+    let pick = candidates.length - 1;
+    for (let i = 0; i < candidates.length; i += 1) {
+      r -= candidates[i]!.weight;
+      if (r <= 0) {
+        pick = i;
+        break;
+      }
+    }
+    chosen.push(candidates[pick]!.id);
+    candidates.splice(pick, 1);
+  }
+  return chosen;
+}
+
+/**
+ * Prepare the hand (fixed + drawn pool cards) and per-round income for the
+ * event the team is currently on. Idempotent: repeated calls for the same event
+ * do not redraw or re-apply income. Legacy scenarios (no deck) are untouched.
+ */
+export function prepareActiveEvent(scenario: Scenario, state: GameStateData): GameStateData {
+  if (!scenario.deck) return state;
+  const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
+  if (!event) {
+    state.hand = [];
+    state.handEventId = undefined;
+    return state;
+  }
+  if (state.handEventId === event.id) return state;
+
+  const deck = scenario.deck;
+  const handCfg = event.hand ?? {};
+  const fixed = handCfg.fixed ?? deck.fixed;
+  const pool = handCfg.pool ?? deck.pool;
+  const drawCount = handCfg.drawCount ?? deck.drawCount;
+  const remaining = state.remainingPool ?? [...deck.pool];
+
+  const drawn = drawPool(scenario, event, state, remaining, drawCount);
+  const drawnSet = new Set(drawn);
+  state.remainingPool = remaining.filter((id) => !drawnSet.has(id));
+  state.usedCards = [...(state.usedCards ?? []), ...drawn];
+  state.hand = [...fixed, ...drawn];
+  state.handEventId = event.id;
+
+  const income = handCfg.income ?? scenario.economy?.incomePerRound ?? 0;
+  if (income > 0) state.budget += income;
+  return state;
+}
+
+/** Visible signals for a team: `truth` only exposed once investigated. */
+export function getVisibleSignals(
+  event: ScenarioEvent,
+  state: GameStateData,
+): { id: string; text: LocalizedText; revealed: boolean; truth?: 'true' | 'false' | 'partial' }[] {
+  const revealed = new Set(state.knowledge?.revealedSignals ?? []);
+  return (event.signals ?? []).map((s) => {
+    const isRevealed = revealed.has(s.id);
+    return {
+      id: s.id,
+      text: s.text,
+      revealed: isRevealed,
+      truth: isRevealed ? s.truth : undefined,
+    };
+  });
 }
 
 /** Evaluate a condition against a state. Empty conditions always hold. */
@@ -89,15 +254,14 @@ export function conditionMet(
 
 /**
  * Options currently selectable for an event: requirements met and affordable.
- * Options that are not affordable but otherwise valid are still returned with a
- * flag so the UI can explain why they are disabled — but for selection we only
- * expose valid ones here.
+ * Works for both deck scenarios (from the drawn hand) and legacy inline options.
  */
 export function availableOptions(
+  scenario: Scenario,
   event: ScenarioEvent,
   state: GameStateData,
 ): DecisionOption[] {
-  return event.options.filter(
+  return getEventCards(scenario, event, state).filter(
     (opt) => conditionMet(opt.requires, state) && state.budget >= opt.cost,
   );
 }
@@ -140,11 +304,18 @@ export function applyDecision(
     completedEventIds: [...inputState.completedEventIds],
     decisions: [...inputState.decisions],
     pendingDelayed: { ...inputState.pendingDelayed },
+    hand: [...(inputState.hand ?? [])],
+    usedCards: [...(inputState.usedCards ?? [])],
+    remainingPool: [...(inputState.remainingPool ?? [])],
+    knowledge: {
+      revealedSignals: [...(inputState.knowledge?.revealedSignals ?? [])],
+      clarity: inputState.knowledge?.clarity ?? 0,
+    },
   };
 
   const currentEventId = inputState.currentEventId;
   const event = getEvent(scenario, currentEventId);
-  const option = event.options.find((o) => o.id === optionId);
+  const option = getEventCards(scenario, event, state).find((o) => o.id === optionId);
   if (!option) throw new EngineError('OPTION_NOT_FOUND', `Option ${optionId} not found`);
   if (!conditionMet(option.requires, state)) {
     throw new EngineError('REQUIREMENT_NOT_MET', 'Option requirements are not satisfied');
@@ -193,6 +364,15 @@ export function applyDecision(
     state.flags = state.flags.filter((f) => f !== flag);
   }
 
+  // investigation cards reveal ambiguous signals and add clarity
+  if (option.kind === 'investigate') {
+    for (const sig of option.revealsSignals ?? []) {
+      if (!state.knowledge!.revealedSignals.includes(sig)) state.knowledge!.revealedSignals.push(sig);
+    }
+    const delta = option.clarityDelta ?? 0;
+    state.knowledge!.clarity = Math.max(0, Math.min(1, state.knowledge!.clarity + delta));
+  }
+
   // 4. queue delayed effects
   if (delayed) {
     for (const [k, v] of Object.entries(delayed)) {
@@ -220,6 +400,11 @@ export function applyDecision(
     state.metrics = applyDeltas(state.metrics, state.pendingDelayed);
     state.pendingDelayed = {};
     state.status = 'ended';
+    state.hand = [];
+    state.handEventId = undefined;
+  } else {
+    // draw the next round's hand and grant per-round income
+    prepareActiveEvent(scenario, state);
   }
 
   return {
@@ -291,7 +476,7 @@ export function simulatePlaythrough(
 
   while (state.currentEventId && guard < 200) {
     const event = getEvent(scenario, state.currentEventId);
-    const opts = availableOptions(event, state);
+    const opts = availableOptions(scenario, event, state);
     if (!opts.length) break;
 
     const requested = choices[steps.length];
@@ -327,13 +512,46 @@ export function simulatePlaythrough(
 export function validateScenario(scenario: Scenario): string[] {
   const problems: string[] = [];
   if (!scenario.events.length) problems.push('Scenario has no events');
+
+  const deckMode = Boolean(scenario.deck);
+  const cardIds = new Set<string>();
+  for (const card of scenario.cards ?? []) {
+    if (cardIds.has(card.id)) problems.push(`Duplicate card id: ${card.id}`);
+    cardIds.add(card.id);
+  }
+
+  if (deckMode) {
+    const deck = scenario.deck!;
+    if (!(scenario.cards ?? []).length) problems.push('Deck scenario has no cards');
+    for (const id of [...deck.fixed, ...deck.pool]) {
+      if (!cardIds.has(id)) problems.push(`Deck references unknown card ${id}`);
+    }
+    if (deck.pool.length < deck.drawCount) {
+      problems.push(`Deck pool (${deck.pool.length}) is smaller than drawCount (${deck.drawCount})`);
+    }
+    const index = cardIndex(scenario);
+    const minPerFocus = scenario.economy?.minPerFocusTag ?? 3;
+    for (const event of scenario.events) {
+      for (const tag of event.focusTags ?? []) {
+        const count = deck.pool.filter((id) => (index.get(id)?.tags ?? []).includes(tag)).length;
+        if (count < minPerFocus) {
+          problems.push(
+            `Event ${event.id} focus tag "${tag}" has only ${count} pool cards (min ${minPerFocus})`,
+          );
+        }
+      }
+    }
+  }
+
   const ids = new Set<string>();
   for (const event of scenario.events) {
     if (ids.has(event.id)) problems.push(`Duplicate event id: ${event.id}`);
     ids.add(event.id);
-    if (!event.options.length) problems.push(`Event ${event.id} has no options`);
+
+    const eventOptions = event.options ?? [];
+    if (!deckMode && !eventOptions.length) problems.push(`Event ${event.id} has no options`);
     const optIds = new Set<string>();
-    for (const opt of event.options) {
+    for (const opt of eventOptions) {
       if (optIds.has(opt.id)) problems.push(`Duplicate option id ${opt.id} in event ${event.id}`);
       optIds.add(opt.id);
     }

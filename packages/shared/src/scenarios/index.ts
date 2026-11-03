@@ -2,6 +2,9 @@ import type { Scenario } from '../types';
 import { ransomwareScenario } from './ransomware';
 import { webAppScenario } from './webapp';
 import { privilegedScenario } from './privileged';
+import { corporateScenario } from './corporate';
+import { publicServicesScenario } from './public';
+import { industrialScenario } from './industrial';
 
 /**
  * Registry of built-in scenario definitions, keyed by scenario key.
@@ -11,6 +14,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   [ransomwareScenario.key]: ransomwareScenario,
   [webAppScenario.key]: webAppScenario,
   [privilegedScenario.key]: privilegedScenario,
+  [corporateScenario.key]: corporateScenario,
+  [publicServicesScenario.key]: publicServicesScenario,
+  [industrialScenario.key]: industrialScenario,
 };
 
 export function getScenarioByKey(key: string): Scenario | undefined {
@@ -21,4 +27,11 @@ export function listScenarios(): Scenario[] {
   return Object.values(SCENARIOS);
 }
 
-export { ransomwareScenario, webAppScenario, privilegedScenario };
+export {
+  ransomwareScenario,
+  webAppScenario,
+  privilegedScenario,
+  corporateScenario,
+  publicServicesScenario,
+  industrialScenario,
+};

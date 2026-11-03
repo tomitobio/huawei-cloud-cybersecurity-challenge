@@ -8,6 +8,7 @@ import {
   DEFAULT_WEIGHTS,
   type GameStateData,
   type Scenario,
+  type DecisionOption,
 } from '@hcc/shared';
 
 /** Build (and persist) a post-workshop report. All data is simulated. */
@@ -25,13 +26,20 @@ export async function generateReport(sessionId: string) {
   const scenario = session.scenario.definition as unknown as Scenario;
   const weights = (session.weights as Record<string, number>) ?? DEFAULT_WEIGHTS;
 
+  // Deck scenarios keep their options in `scenario.cards`; legacy scenarios keep
+  // them inline per event. Build a lookup that covers both.
+  const cardIndex = new Map<string, DecisionOption>();
+  for (const card of scenario.cards ?? []) cardIndex.set(card.id, card);
+
   const teams = session.teams.map((team) => {
     const state = team.state ? (team.state.data as unknown as GameStateData) : null;
     const score = state ? finalScoreFor(scenario, state) : 0;
 
     const decisions = team.decisions.map((d) => {
       const ev = scenario.events.find((e) => e.id === d.eventId);
-      const opt = ev?.options.find((o) => o.id === d.optionId);
+      const opt =
+        cardIndex.get(d.optionId) ??
+        ev?.options?.find((o) => o.id === d.optionId);
       return {
         round: d.round,
         eventId: d.eventId,
@@ -46,7 +54,7 @@ export async function generateReport(sessionId: string) {
       };
     });
 
-    const spent = team.budgetStart - (state?.budget ?? 0);
+    const spent = team.decisions.reduce((acc, d) => acc + d.cost, 0);
 
     return {
       teamId: team.id,
@@ -80,7 +88,10 @@ export async function generateReport(sessionId: string) {
   }));
 
   const relevantControls = Array.from(
-    new Set(scenario.events.flatMap((e) => e.options.flatMap((o) => o.controls))),
+    new Set([
+      ...(scenario.cards ?? []).flatMap((o) => o.controls),
+      ...scenario.events.flatMap((e) => (e.options ?? []).flatMap((o) => o.controls)),
+    ]),
   );
   const services = relevantControls.map((c) => {
     const card = getProductCard(c);

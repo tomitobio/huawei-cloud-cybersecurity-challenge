@@ -169,6 +169,42 @@ export function TeamWorkspacePage() {
                   <p className="mt-1 text-sm text-amber-100">{lt(event.businessImpact)}</p>
                 </div>
               )}
+              {((event.signals && event.signals.length > 0) ||
+                (event.hypotheses && event.hypotheses.length > 0)) && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {event.signals && event.signals.length > 0 && (
+                    <div className="rounded-lg border border-base-700 bg-base-850/40 p-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-accent-cyan">
+                        {t('team.signals')}
+                        {typeof event.clarity === 'number' && ` · ${t('team.clarity')} ${Math.round(event.clarity * 100)}%`}
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-slate-300">
+                        {event.signals.map((s) => (
+                          <li key={s.id} className="flex items-start gap-2">
+                            <span>{s.revealed ? '✓' : '?'}</span>
+                            <span className={s.revealed ? 'text-slate-100' : 'text-slate-400'}>{lt(s.text)}</span>
+                            <span className="ml-auto chip text-[10px]">
+                              {s.revealed ? t('team.signalRevealed') : t('team.signalOpen')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {event.hypotheses && event.hypotheses.length > 0 && (
+                    <div className="rounded-lg border border-base-700 bg-base-850/40 p-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                        {t('team.hypotheses')}
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-slate-300">
+                        {event.hypotheses.map((h, idx) => (
+                          <li key={idx}>• {lt(h)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
           ) : (
             <Card>
@@ -351,6 +387,12 @@ function OptionCard({
           </div>
           <p className="mt-1 text-sm text-slate-400">{lt(option.description)}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            {option.premium && (
+              <span className="chip text-[10px] text-accent-amber">★ {t('team.premium')}</span>
+            )}
+            {option.kind === 'investigate' && (
+              <span className="chip text-[10px] text-accent-cyan">🔍 {t('team.investigate')}</span>
+            )}
             {option.controls.map((c) => (
               <span key={c} className="chip text-[10px] text-accent-cyan">{c}</span>
             ))}

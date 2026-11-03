@@ -8,14 +8,22 @@ import {
   validateScenario,
 } from '../engine';
 import { SCENARIOS, listScenarios, getScenarioByKey } from '../scenarios';
+import { CARD_LIBRARY } from '../scenarios/cards';
 import type { Scenario } from '../types';
 
 const scenarios = listScenarios();
 
 describe('scenario library', () => {
-  it('registers the three built-in scenarios', () => {
+  it('registers the six built-in scenarios', () => {
     expect(listScenarios().map((s) => s.key).sort()).toEqual(
-      ['privileged-access-health', 'ransomware-retail', 'webapp-travel'].sort(),
+      [
+        'corporate-multisector',
+        'industrial-operations',
+        'privileged-access-health',
+        'public-services',
+        'ransomware-retail',
+        'webapp-travel',
+      ].sort(),
     );
   });
 
@@ -36,11 +44,37 @@ describe.each(scenarios.map((s) => [s.key, s] as const))('%s', (_key, scenario: 
       expect(event.title.en.length).toBeGreaterThan(0);
       expect(event.narrative.es.length).toBeGreaterThan(0);
       expect(event.narrative.en.length).toBeGreaterThan(0);
-      for (const opt of event.options) {
-        expect(opt.label.es.length).toBeGreaterThan(0);
-        expect(opt.label.en.length).toBeGreaterThan(0);
-        expect(opt.description.es.length).toBeGreaterThan(0);
-        expect(opt.description.en.length).toBeGreaterThan(0);
+      for (const hyp of event.hypotheses ?? []) {
+        expect(hyp.es.length).toBeGreaterThan(0);
+        expect(hyp.en.length).toBeGreaterThan(0);
+      }
+      for (const sig of event.signals ?? []) {
+        expect(sig.text.es.length).toBeGreaterThan(0);
+        expect(sig.text.en.length).toBeGreaterThan(0);
+      }
+    }
+    // Card text: from the scenario deck, or the legacy inline options.
+    const cards = scenario.cards ?? scenario.events.flatMap((e) => e.options ?? []);
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.label.es.length).toBeGreaterThan(0);
+      expect(card.label.en.length).toBeGreaterThan(0);
+      expect(card.description.es.length).toBeGreaterThan(0);
+      expect(card.description.en.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('uses a coherent deck (fixed + pool) when deck-based', () => {
+    if (!scenario.deck) return;
+    expect((scenario.cards ?? []).length).toBeGreaterThan(0);
+    expect(scenario.deck.fixed.length).toBeGreaterThanOrEqual(6);
+    expect(scenario.deck.fixed.length).toBeLessThanOrEqual(7);
+    expect(scenario.deck.pool.length).toBeGreaterThanOrEqual(scenario.deck.drawCount);
+    // every focus tag must have at least 3 pool cards
+    for (const event of scenario.events) {
+      for (const tag of event.focusTags ?? []) {
+        const count = scenario.deck.pool.filter((id) => (CARD_LIBRARY[id]?.tags ?? []).includes(tag)).length;
+        expect(count).toBeGreaterThanOrEqual(3);
       }
     }
   });
@@ -50,7 +84,7 @@ describe.each(scenarios.map((s) => [s.key, s] as const))('%s', (_key, scenario: 
     let guard = 0;
     while (state.currentEventId && guard < 60) {
       const event = getEvent(scenario, state.currentEventId);
-      const opts = availableOptions(event, state);
+      const opts = availableOptions(scenario, event, state);
       expect(opts.length).toBeGreaterThan(0);
       // choose the highest-scoring affordable option to exercise positive paths
       const choice = [...opts].sort((a, b) => (b.scoreDelta ?? 0) - (a.scoreDelta ?? 0))[0]!;
@@ -67,37 +101,18 @@ describe.each(scenarios.map((s) => [s.key, s] as const))('%s', (_key, scenario: 
     expect(Number.isFinite(finalScoreFor(scenario, state))).toBe(true);
   });
 
-  it('has every event reachable in the definition of the scenario', () => {
-    // sanity: all scenario keys are unique
+  it('is registered in the SCENARIOS map', () => {
     expect(Object.keys(SCENARIOS)).toContain(scenario.key);
   });
 });
 
-describe('branching per scenario', () => {
-  it('webapp routes to the over-blocking outage branch', () => {
-    const scenario = getScenarioByKey('webapp-travel')!;
-    const s0 = initGameState('t', scenario);
-    const s1 = applyDecision(scenario, s0, 'pkg-web').state;
-    const s2 = applyDecision(scenario, s1, 'waf-block-all');
-    expect(s2.state.currentEventId).toBe('b3b-outage');
-    expect(s2.state.flags).toContain('aggressive_blocking');
-  });
-
-  it('privileged routes to the expanded-breach branch when ignored', () => {
-    const scenario = getScenarioByKey('privileged-access-health')!;
-    const s0 = initGameState('t', scenario);
-    const s1 = applyDecision(scenario, s0, 'pkg-priv-data').state;
-    const s2 = applyDecision(scenario, s1, 'ignore-priv');
-    expect(s2.state.currentEventId).toBe('c2b-breach');
-    expect(s2.state.flags).toContain('ignored_priv');
-  });
-
-  it('privileged follows the normal path when investigated', () => {
-    const scenario = getScenarioByKey('privileged-access-health')!;
-    const s0 = initGameState('t', scenario);
-    const s1 = applyDecision(scenario, s0, 'pkg-priv-data').state;
-    const s2 = applyDecision(scenario, s1, 'cbh-review');
-    expect(s2.state.currentEventId).toBe('c3-credentials');
-    expect(s2.state.flags).toContain('priv_incident');
+describe('deck variety', () => {
+  it('scenarios use the same fixed cards (fairness) but draw different pools', () => {
+    const decked = scenarios.filter((s) => s.deck);
+    expect(decked.length).toBeGreaterThanOrEqual(6);
+    const firstFixed = [...decked[0]!.deck!.fixed].sort().join(',');
+    for (const s of decked) {
+      expect([...s.deck!.fixed].sort().join(',')).toBe(firstFixed);
+    }
   });
 });

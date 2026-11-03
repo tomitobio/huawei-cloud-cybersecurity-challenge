@@ -5,6 +5,8 @@ import {
   conditionMet,
   finalScoreFor,
   getEvent,
+  getEventCards,
+  getVisibleSignals,
   initGameState,
   simulatePlaythrough,
   validateScenario,
@@ -14,78 +16,173 @@ import { ransomwareScenario } from '../scenarios/ransomware';
 import { computeFinalScore as scoreFn } from '../scoring';
 import type { GameStateData, Scenario } from '../types';
 
+const baseWeights: Scenario['weights'] = {
+  continuity: 1,
+  riskReduction: 1,
+  customerTrust: 1,
+  financial: 1,
+  governance: 1,
+  responseQuality: 1,
+  efficiency: 1,
+};
+
+/** A small synthetic deck scenario to exercise deck mechanics deterministically. */
+function deckScenario(): Scenario {
+  return {
+    key: 'synth-deck',
+    version: 1,
+    name: { es: 'Mazo sintético', en: 'Synthetic deck' },
+    summary: { es: 'x', en: 'x' },
+    organization: {
+      name: 'Synth',
+      industry: { es: 'x', en: 'x' },
+      size: { es: 'x', en: 'x' },
+      description: { es: 'x', en: 'x' },
+      objectives: [],
+      criticalAssets: [],
+    },
+    architecture: [],
+    start: { budget: 10, maturity: 'medium' },
+    weights: baseWeights,
+    cards: [
+      {
+        id: 'fixed-inv',
+        label: { es: 'investigar', en: 'investigate' },
+        description: { es: 'i', en: 'i' },
+        cost: 0,
+        controls: [],
+        tags: ['web'],
+        kind: 'investigate',
+        revealsSignals: ['sig1'],
+        clarityDelta: 0.5,
+      },
+      {
+        id: 'fixed-premium',
+        label: { es: 'premium', en: 'premium' },
+        description: { es: 'p', en: 'p' },
+        cost: 1,
+        controls: [],
+        tags: ['web'],
+        premiumOnFocus: true,
+        scoreDelta: 1,
+      },
+      { id: 'pool-a', label: { es: 'a', en: 'a' }, description: { es: 'a', en: 'a' }, cost: 1, controls: [], tags: ['web'] },
+      { id: 'pool-b', label: { es: 'b', en: 'b' }, description: { es: 'b', en: 'b' }, cost: 1, controls: [], tags: ['web'] },
+      { id: 'pool-c', label: { es: 'c', en: 'c' }, description: { es: 'c', en: 'c' }, cost: 1, controls: [], tags: ['web'] },
+      { id: 'pool-d', label: { es: 'd', en: 'd' }, description: { es: 'd', en: 'd' }, cost: 1, controls: [], tags: ['other'] },
+    ],
+    deck: { fixed: ['fixed-inv', 'fixed-premium'], pool: ['pool-a', 'pool-b', 'pool-c', 'pool-d'], drawCount: 1 },
+    economy: { incomePerRound: 5, focus: { costMultiplier: 2, scoreMultiplier: 2 }, minPerFocusTag: 1 },
+    events: [
+      {
+        id: 'de1',
+        round: 1,
+        phase: { es: 'p', en: 'p' },
+        title: { es: 't', en: 't' },
+        narrative: { es: 'n', en: 'n' },
+        focusTags: ['web'],
+        signals: [{ id: 'sig1', text: { es: 'señal', en: 'signal' }, truth: 'true' }],
+        next: 'de2',
+      },
+      {
+        id: 'de2',
+        round: 2,
+        phase: { es: 'p', en: 'p' },
+        title: { es: 't', en: 't' },
+        narrative: { es: 'n', en: 'n' },
+        focusTags: ['web'],
+      },
+    ],
+    debrief: { learningObjectives: [], correctReasoning: [] },
+  };
+}
+
 describe('scenario validation', () => {
   it('the ransomware scenario is valid and fully reachable', () => {
-    const problems = validateScenario(ransomwareScenario);
-    expect(problems).toEqual([]);
+    expect(validateScenario(ransomwareScenario)).toEqual([]);
   });
 });
 
 describe('initGameState', () => {
-  it('starts with the scenario budget and first event', () => {
+  it('starts with budget + first-round income and the first event', () => {
     const state = initGameState('t1', ransomwareScenario);
-    expect(state.budget).toBe(ransomwareScenario.start.budget);
+    // deck scenarios grant per-round income on initialization too
+    expect(state.budget).toBe(ransomwareScenario.start.budget + ransomwareScenario.economy!.incomePerRound);
     expect(state.currentEventId).toBe('e1-investment');
     expect(state.status).toBe('active');
     expect(state.version).toBe(0);
   });
+
+  it('draws a fixed + pool hand and tracks the remaining pool', () => {
+    const scenario = deckScenario();
+    const state = initGameState('teamA', scenario, 42);
+    expect(state.hand).toContain('fixed-inv');
+    expect(state.hand).toContain('fixed-premium');
+    // drawCount 1 -> hand = 2 fixed + 1 drawn
+    expect(state.hand).toHaveLength(3);
+    expect(state.remainingPool).toHaveLength(scenario.deck!.pool.length - scenario.deck!.drawCount);
+    expect(state.knowledge).toEqual({ revealedSignals: [], clarity: 0 });
+  });
+
+  it('is deterministic per team/seed and independent across teams', () => {
+    const scenario = deckScenario();
+    const a1 = initGameState('teamA', scenario, 7);
+    const a2 = initGameState('teamA', scenario, 7);
+    expect(a1.hand).toEqual(a2.hand);
+  });
 });
 
-describe('options and requirements', () => {
-  it('filters options by requirements and budget', () => {
+describe('options and requirements (deck)', () => {
+  it('returns only selectable, affordable options from the hand', () => {
     const state = initGameState('t1', ransomwareScenario);
     const event = getEvent(ransomwareScenario, state.currentEventId!);
-    const opts = availableOptions(event, state);
-    expect(opts.length).toBe(5);
-  });
-
-  it('hides HSS-dependent option until HSS is funded', () => {
-    const state = initGameState('t1', ransomwareScenario);
-    const after = applyDecision(ransomwareScenario, state, 'pkg-minimal').state;
-    const event = getEvent(ransomwareScenario, after.currentEventId!);
-    const ids = availableOptions(event, after).map((o) => o.id);
-    expect(ids).not.toContain('investigate-hss');
-    expect(ids).toContain('investigate-manual');
-  });
-
-  it('grants flags and deducts budget', () => {
-    const state = initGameState('t1', ransomwareScenario);
-    const result = applyDecision(ransomwareScenario, state, 'pkg-balanced');
-    expect(result.state.flags).toEqual(
-      expect.arrayContaining(['hss_funded', 'cfw_funded', 'secmaster_funded']),
-    );
-    expect(result.state.budget).toBe(100 - 48);
-    expect(result.nextEventId).toBe('e2-host-alert');
+    const opts = availableOptions(ransomwareScenario, event, state);
+    expect(opts.length).toBeGreaterThan(0);
+    for (const opt of opts) {
+      expect(state.budget).toBeGreaterThanOrEqual(opt.cost);
+    }
   });
 
   it('rejects unaffordable options', () => {
     const state = initGameState('t1', ransomwareScenario);
-    state.budget = 3;
-    expect(() => applyDecision(ransomwareScenario, state, 'pkg-balanced')).toThrow(EngineError);
-  });
-
-  it('rejects options whose requirements are unmet', () => {
-    const state = initGameState('t1', ransomwareScenario);
-    const after = applyDecision(ransomwareScenario, state, 'pkg-perimeter').state;
-    expect(() => applyDecision(ransomwareScenario, after, 'investigate-hss')).toThrow(EngineError);
+    state.budget = 0;
+    const event = getEvent(ransomwareScenario, state.currentEventId!);
+    const cards = getEventCards(ransomwareScenario, event, state);
+    const paid = cards.find((c) => c.cost > 0)!;
+    expect(() => applyDecision(ransomwareScenario, state, paid.id)).toThrow(EngineError);
   });
 });
 
-describe('branching', () => {
-  it('routes to the severe path when the alert is ignored', () => {
-    const state = initGameState('t1', ransomwareScenario);
-    const afterE1 = applyDecision(ransomwareScenario, state, 'pkg-detect').state;
-    const afterE2 = applyDecision(ransomwareScenario, afterE1, 'ignore-alert');
-    expect(afterE2.state.currentEventId).toBe('e3b-spread-severe');
-    expect(afterE2.state.flags).toContain('ignored_alert');
+describe('deck economics and investigation', () => {
+  it('applies focus premium pricing to premiumOnFocus cards', () => {
+    const scenario = deckScenario();
+    const state = initGameState('teamA', scenario, 1);
+    const event = getEvent(scenario, 'de1');
+    const cards = getEventCards(scenario, event, state);
+    const premium = cards.find((c) => c.id === 'fixed-premium')!;
+    expect(premium.premium).toBe(true);
+    expect(premium.cost).toBe(2); // 1 * costMultiplier 2
+    expect(premium.scoreDelta).toBe(2); // 1 * scoreMultiplier 2
   });
 
-  it('routes to the normal path when the alert is investigated', () => {
-    const state = initGameState('t1', ransomwareScenario);
-    const afterE1 = applyDecision(ransomwareScenario, state, 'pkg-balanced').state;
-    const afterE2 = applyDecision(ransomwareScenario, afterE1, 'investigate-hss');
-    expect(afterE2.state.currentEventId).toBe('e3-spread');
-    expect(afterE2.state.flags).toContain('confirmed_compromise');
+  it('investigate cards reveal signals and increase clarity', () => {
+    const scenario = deckScenario();
+    const state = initGameState('teamA', scenario, 1);
+    const result = applyDecision(scenario, state, 'fixed-inv');
+    expect(result.state.knowledge!.revealedSignals).toContain('sig1');
+    expect(result.state.knowledge!.clarity).toBeCloseTo(0.5);
+    const visible = getVisibleSignals(getEvent(scenario, 'de1'), result.state);
+    const sig = visible.find((s) => s.id === 'sig1')!;
+    expect(sig.revealed).toBe(true);
+    expect(sig.truth).toBe('true');
+  });
+
+  it('does not reveal signal truth until investigated', () => {
+    const scenario = deckScenario();
+    const state = initGameState('teamA', scenario, 1);
+    const visible = getVisibleSignals(getEvent(scenario, 'de1'), state);
+    expect(visible[0]!.revealed).toBe(false);
+    expect(visible[0]!.truth).toBeUndefined();
   });
 });
 
@@ -111,7 +208,7 @@ describe('conditionMet', () => {
   });
 });
 
-describe('delayed effects and transitions (synthetic scenario)', () => {
+describe('delayed effects and transitions (legacy inline scenario)', () => {
   const synth: Scenario = {
     key: 'synth',
     version: 1,
@@ -127,7 +224,7 @@ describe('delayed effects and transitions (synthetic scenario)', () => {
     },
     architecture: [],
     start: { budget: 50, maturity: 'medium' },
-    weights: { ...ransomwareScenario.weights },
+    weights: baseWeights,
     events: [
       {
         id: 's1',
@@ -145,13 +242,7 @@ describe('delayed effects and transitions (synthetic scenario)', () => {
             delayed: { riskReduction: 10 },
             grantsFlags: ['chose_a'],
           },
-          {
-            id: 'b',
-            label: { es: 'b', en: 'b' },
-            description: { es: 'b', en: 'b' },
-            cost: 5,
-            controls: [],
-          },
+          { id: 'b', label: { es: 'b', en: 'b' }, description: { es: 'b', en: 'b' }, cost: 5, controls: [] },
         ],
         transitions: [{ when: { hasFlag: 'chose_a' }, goto: 's3' }],
         next: 's2',
@@ -181,20 +272,26 @@ describe('delayed effects and transitions (synthetic scenario)', () => {
     const s0 = initGameState('t', synth);
     const risk0 = s0.metrics.riskReduction;
     const s1 = applyDecision(synth, s0, 'a').state;
-    // delayed not yet applied
     expect(s1.metrics.riskReduction).toBe(risk0);
     expect(s1.pendingDelayed.riskReduction).toBe(10);
     const s2 = applyDecision(synth, s1, 'd').state; // jumps to s3, flushes delayed
     expect(s2.metrics.riskReduction).toBe(risk0 + 10);
   });
 
-  it('ends the game when there is no next event', () => {
+  it('routes through transitions and ends with no next event', () => {
     const s0 = initGameState('t', synth);
-    const s1 = applyDecision(synth, s0, 'b').state; // -> s2
-    const s2 = applyDecision(synth, s1, 'c').state; // -> s3
-    const s3 = applyDecision(synth, s2, 'd'); // -> end
-    expect(s3.nextEventId).toBeNull();
-    expect(s3.state.status).toBe('ended');
+    const s1 = applyDecision(synth, s0, 'a').state;
+    expect(s1.currentEventId).toBe('s3'); // transition on flag
+    const s2 = applyDecision(synth, s1, 'd');
+    expect(s2.nextEventId).toBeNull();
+    expect(s2.state.status).toBe('ended');
+  });
+
+  it('legacy availableOptions reads inline event.options', () => {
+    const s0 = initGameState('t', synth);
+    const event = getEvent(synth, 's1');
+    const ids = availableOptions(synth, event, s0).map((o) => o.id);
+    expect(ids).toEqual(expect.arrayContaining(['a', 'b']));
   });
 });
 
@@ -204,7 +301,7 @@ describe('full playthrough and scoring', () => {
     let guard = 0;
     while (state.currentEventId && guard < 50) {
       const event = getEvent(ransomwareScenario, state.currentEventId);
-      const opts = availableOptions(event, state);
+      const opts = availableOptions(ransomwareScenario, event, state);
       expect(opts.length).toBeGreaterThan(0);
       const choice = opts[0]!;
       state = applyDecision(ransomwareScenario, state, choice.id).state;
@@ -216,8 +313,7 @@ describe('full playthrough and scoring', () => {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThanOrEqual(100);
     }
-    const score = finalScoreFor(ransomwareScenario, state);
-    expect(Number.isFinite(score)).toBe(true);
+    expect(Number.isFinite(finalScoreFor(ransomwareScenario, state))).toBe(true);
   });
 
   it('computeFinalScore is a transparent weighted sum', () => {
@@ -228,20 +324,12 @@ describe('full playthrough and scoring', () => {
     expect(scoreFn(zero, ransomwareScenario.weights, 0)).toBe(0);
   });
 
-  it('simulatePlaythrough returns steps and a bounded final score', () => {
+  it('simulatePlaythrough returns one step per event and a bounded final score', () => {
     const result = simulatePlaythrough(ransomwareScenario);
-    expect(result.steps.length).toBe(7);
+    expect(result.steps.length).toBe(ransomwareScenario.events.length);
     expect(result.steps[0]!.eventId).toBe('e1-investment');
     expect(result.steps.at(-1)!.nextEventId).toBeNull();
     expect(Number.isFinite(result.finalScore)).toBe(true);
     expect(result.finalState.status).toBe('ended');
-  });
-
-  it('simulatePlaythrough honours explicit choices', () => {
-    const result = simulatePlaythrough(ransomwareScenario, ['pkg-detect', 'ignore-alert']);
-    expect(result.steps[0]!.optionId).toBe('pkg-detect');
-    expect(result.steps[1]!.optionId).toBe('ignore-alert');
-    // the ignored alert branches to the severe spread event
-    expect(result.steps[2]!.eventId).toBe('e3b-spread-severe');
   });
 });

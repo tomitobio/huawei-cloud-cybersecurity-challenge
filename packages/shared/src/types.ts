@@ -88,6 +88,65 @@ export interface DecisionOption {
    * session seed. Defaults to 0 (fully deterministic — current behaviour).
    */
   variance?: number;
+
+  // --- Card-deck fields (new gameplay) ---------------------------------------
+  /**
+   * Domain tags used by the deck randomizer and by focus weighting, e.g.
+   * ['web', 'web_tampering']. A card whose tags intersect an event's
+   * `focusTags` is drawn more often (and, if `premiumOnFocus`, costs/scores more).
+   */
+  tags?: string[];
+  /** Base weight in the weighted card draw (default 1). */
+  baseWeight?: number;
+  /**
+   * When true and the card's tags hit the current event's focus, the engine
+   * scales its cost and score by `economy.focus`. Models an "in-demand" service:
+   * more valuable in context but more expensive.
+   */
+  premiumOnFocus?: boolean;
+  /** 'investigate' cards reveal ambiguous signals and add clarity. */
+  kind?: 'action' | 'investigate';
+  /** Signal ids revealed when an investigate card is chosen. */
+  revealsSignals?: string[];
+  /** Uncertainty reduction in [0, 1] contributed by an investigate card. */
+  clarityDelta?: number;
+  /** Set by the engine at runtime when focus premium pricing is applied. */
+  premium?: boolean;
+}
+
+/** An ambiguous signal shown to teams; `truth` is only revealed after investigation. */
+export interface AmbiguousSignal {
+  id: string;
+  text: LocalizedText;
+  truth: 'true' | 'false' | 'partial';
+}
+
+/** Per-event override of the scenario deck / economy. */
+export interface HandConfig {
+  fixed?: string[];
+  pool?: string[];
+  drawCount?: number;
+  income?: number;
+}
+
+/** Scenario-level deck configuration. */
+export interface DeckConfig {
+  /** Card ids always available in the hand (same for every team). */
+  fixed: string[];
+  /** Card ids eligible for the weighted random draw. */
+  pool: string[];
+  /** How many pool cards to draw per round. */
+  drawCount: number;
+}
+
+/** Scenario economy: per-round income and focus-premium multipliers. */
+export interface EconomyConfig {
+  /** Credits granted at the start of every round (helps teams not go broke). */
+  incomePerRound: number;
+  /** Multipliers applied to premium cards whose tags hit the event focus. */
+  focus?: { costMultiplier: number; scoreMultiplier: number };
+  /** Minimum number of pool cards per event focus tag (validation hint). */
+  minPerFocusTag?: number;
 }
 
 export interface ScenarioEvent {
@@ -99,7 +158,16 @@ export interface ScenarioEvent {
   intel?: LocalizedText[];
   businessImpact?: LocalizedText;
   controlsInPlay?: ControlId[];
-  options: DecisionOption[];
+  /** Inline options (legacy model). Deck-based scenarios leave this empty. */
+  options?: DecisionOption[];
+  /** Focus tags that weight the card draw for this event. */
+  focusTags?: string[];
+  /** Per-event override of the deck hand / income. */
+  hand?: HandConfig;
+  /** Ambiguous signals (some are red herrings). `truth` is engine-only. */
+  signals?: AmbiguousSignal[];
+  /** Competing explanations shown to teams. */
+  hypotheses?: LocalizedText[];
   transitions?: Transition[];
   /** Default next event id. If absent, the next event in definition order is used. */
   next?: string;
@@ -144,6 +212,12 @@ export interface Scenario {
     baseMetrics?: MetricDeltas;
   };
   weights: ScoreWeights;
+  /** Global card deck (fixed + pool). Used by deck-based scenarios. */
+  cards?: DecisionOption[];
+  /** Deck configuration for weighted per-round card draws. */
+  deck?: DeckConfig;
+  /** Per-round economy (income, focus premiums). */
+  economy?: EconomyConfig;
   events: ScenarioEvent[];
   debrief: {
     learningObjectives: LocalizedText[];
@@ -177,6 +251,18 @@ export interface GameStateData {
   seed?: number;
   /** Number of decisions resolved so far — advances the RNG stream. */
   rngCounter?: number;
+
+  // --- Card-deck runtime state (new gameplay) --------------------------------
+  /** Card ids currently available to the team this round. */
+  hand?: string[];
+  /** Pool cards already drawn (consumed) for this team. */
+  usedCards?: string[];
+  /** Pool cards still eligible to be drawn. */
+  remainingPool?: string[];
+  /** Event id the current hand was drawn for (idempotency guard). */
+  handEventId?: string;
+  /** Investigated signals and accumulated clarity in [0, 1]. */
+  knowledge?: { revealedSignals: string[]; clarity: number };
 }
 
 export type SessionStatus = 'LOBBY' | 'ACTIVE' | 'PAUSED' | 'ENDED';

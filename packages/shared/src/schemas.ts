@@ -47,6 +47,27 @@ export const decisionOptionSchema = z.object({
   mitigates: z.array(z.string()).optional(),
   isRecovery: z.boolean().optional(),
   variance: z.number().min(0).max(1).optional(),
+  // Card-deck fields
+  tags: z.array(z.string()).optional(),
+  baseWeight: z.number().min(0).optional(),
+  premiumOnFocus: z.boolean().optional(),
+  kind: z.enum(['action', 'investigate']).optional(),
+  revealsSignals: z.array(z.string()).optional(),
+  clarityDelta: z.number().min(0).max(1).optional(),
+  premium: z.boolean().optional(),
+});
+
+export const ambiguousSignalSchema = z.object({
+  id: z.string().min(1),
+  text: localizedTextSchema,
+  truth: z.enum(['true', 'false', 'partial']),
+});
+
+export const handConfigSchema = z.object({
+  fixed: z.array(z.string()).optional(),
+  pool: z.array(z.string()).optional(),
+  drawCount: z.number().int().min(0).optional(),
+  income: z.number().min(0).optional(),
 });
 
 export const scenarioEventSchema = z.object({
@@ -58,7 +79,11 @@ export const scenarioEventSchema = z.object({
   intel: z.array(localizedTextSchema).optional(),
   businessImpact: localizedTextSchema.optional(),
   controlsInPlay: z.array(controlIdSchema).optional(),
-  options: z.array(decisionOptionSchema).min(2),
+  options: z.array(decisionOptionSchema).optional(),
+  focusTags: z.array(z.string()).optional(),
+  hand: handConfigSchema.optional(),
+  signals: z.array(ambiguousSignalSchema).optional(),
+  hypotheses: z.array(localizedTextSchema).optional(),
   transitions: z
     .array(z.object({ when: conditionSchema, goto: z.string(), note: localizedTextSchema.optional() }))
     .optional(),
@@ -100,6 +125,23 @@ export const scenarioSchema = z.object({
     baseMetrics: metricDeltasSchema.optional(),
   }),
   weights: z.record(metricKeySchema, z.number()),
+  cards: z.array(decisionOptionSchema).optional(),
+  deck: z
+    .object({
+      fixed: z.array(z.string()),
+      pool: z.array(z.string()),
+      drawCount: z.number().int().min(0),
+    })
+    .optional(),
+  economy: z
+    .object({
+      incomePerRound: z.number().min(0),
+      focus: z
+        .object({ costMultiplier: z.number().min(0), scoreMultiplier: z.number().min(0) })
+        .optional(),
+      minPerFocusTag: z.number().int().min(0).optional(),
+    })
+    .optional(),
   events: z.array(scenarioEventSchema).min(1),
   debrief: z.object({
     learningObjectives: z.array(localizedTextSchema),

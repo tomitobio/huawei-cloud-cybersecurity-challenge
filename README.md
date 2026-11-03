@@ -160,22 +160,42 @@ separate from scoring.
 
 ## Scenario library
 
-Three instructor-ready scenarios ship with the app, all as data under
+Six instructor-ready scenarios ship with the app, all as data under
 `packages/shared/src/scenarios/` (no engine changes required):
 
-| Key | Title | Focus | Events |
+| Key | Title | Focus | Rounds |
 | --- | --- | --- | --- |
-| `ransomware-retail` | **A — Ransomware & Business Continuity** | HSS, CFW, SecMaster (+ DEW/CBH) | 7–8, 2 branches |
-| `webapp-travel` | **B — Public web application under pressure** | WAF, CFW, HSS, SecMaster | 8, outage branch |
-| `privileged-access-health` | **C — Protecting privileged access in healthcare** | CBH, DEW, SecMaster, HSS | 8, breach branch |
+| `ransomware-retail` | **A — Ransomware & business continuity** | HSS, CFW, SecMaster (+ DEW/CBH) | 6 |
+| `webapp-travel` | **B — Public web application under pressure** | WAF, CFW, HSS, SecMaster | 6 |
+| `privileged-access-health` | **C — Protecting privileged access in healthcare** | CBH, DEW, SecMaster, HSS | 6 |
+| `corporate-multisector` | **D — Corporate multi-sector group** | Identity, network, data, SecMaster | 6 |
+| `public-services` | **E — Digital public services** | WAF, CFW, DEW, SecMaster | 6 |
+| `industrial-operations` | **F — Industrial operations (IT/OT)** | CFW, HSS, SecMaster, CBH | 6 |
 
 Every scenario is bilingual (ES/EN), uses fictional organizations/telemetry, and is
 validated by the engine (`validateScenario`) and by automated tests (validity,
-reachability, localization and full playthrough).
+reachability, localization and full playthrough). Every round presents **ambiguous
+signals** (some are red herrings) and competing hypotheses; teams reduce uncertainty by
+playing *investigate* cards.
+
+### Card deck & per-round draw
+
+Each scenario uses a **deck** (`scenario.cards` + `scenario.deck`):
+
+- **Fixed cards** (6–7) are the same for every team and always in the hand, so a round
+  never has a dead hand.
+- **Pool cards** (~40) are drawn **per team, per round** with a weighted random draw
+  (`drawCount`, default 5). The pool is seeded per team, so different teams see
+  different hands while the fixed cards guarantee fairness.
+- The draw is weighted by the event's `focusTags` and by accumulated clarity: cards
+  tagged with the event focus are more likely, and `premiumOnFocus` cards cost more but
+  score more when they match the focus (`economy.focus` multipliers).
+- A **per-round income** (`economy.incomePerRound`) keeps teams from running dry.
 
 ### Adding a scenario
 
-1. Create a file in `packages/shared/src/scenarios/` exporting a `Scenario`.
+1. Create a file in `packages/shared/src/scenarios/` exporting a `Scenario`
+   (use `standardCards()` and `STANDARD_DECK` from `./cards`, or define your own deck).
 2. Register it in `packages/shared/src/scenarios/index.ts` (`SCENARIOS` map).
 3. Run `npm test -w @hcc/shared` — the library tests check it automatically.
 

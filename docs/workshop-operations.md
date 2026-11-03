@@ -83,9 +83,12 @@ timer), **End** (finish early). All instructor actions are written to the audit 
 ## 4. Team experience
 
 - Participants join at **/join** with their team code, a display name and a role.
-- The workspace shows the current event, intelligence, business impact, available
-  actions (with cost and control tags), the team's metrics/budget, the public
-  leaderboard and a timeline.
+- The workspace shows the current event, intelligence, business impact, **ambiguous
+  signals** and **competing hypotheses**, the available card hand (with cost, control
+  tags and *premium/in-focus* or *investigate* markers), the team's metrics/budget, the
+  public leaderboard and a timeline.
+- **Investigate** cards reveal ambiguous signals and raise the *clarity* meter, which
+  makes focus-relevant cards more likely in later draws.
 - **Options are only selectable while the session is `ACTIVE` and the round is open.**
   Banners explain LOBBY / PAUSED / expired-deadline states.
 - If the app is refreshed mid-session, the team returns to its team id (stored locally).
@@ -101,20 +104,29 @@ Go to **Scenarios** in the navigation (`/scenarios`).
 - The **metadata** panel edits key, names (ES/EN), summary, organization, budget,
   maturity and scoring **weights** (normalized server-side).
 - The **events** panel is a JSON array. Each event requires:
-  `id`, `round`, `phase`, `title`, `narrative`, `options`; and optionally
-  `next`, `transitions`, `intel`, `businessImpact`, `controlsInPlay`, `insightKey`,
-  `instructorNotes`. Each option requires `id`, `label`, `description`, `cost`,
-  `controls`; and optionally `requires`, `grantsFlags`, `removesFlags`, `immediate`,
-  `delayed`, `scoreDelta`, `riskLevel`, `risks`.
+  `id`, `round`, `phase`, `title`, `narrative`; and optionally `options` (legacy inline
+  mode), `focusTags`, `hand`, `signals` (`{ id, text, truth }`), `hypotheses`, `next`,
+  `transitions`, `intel`, `businessImpact`, `controlsInPlay`, `insightKey`,
+  `instructorNotes`.
+- **Deck mode** (recommended): define a top-level `cards` array (each card requires
+  `id`, `label`, `description`, `cost`, `controls`; optional `tags`, `baseWeight`,
+  `premiumOnFocus`, `kind: 'investigate'`, `revealsSignals`, `clarityDelta`), a `deck`
+  (`{ fixed, pool, drawCount }`) and an `economy` (`{ incomePerRound, focus, minPerFocusTag }`).
+  Then events may omit `options` and use `focusTags` to steer the weighted draw.
 - **Validate** surfaces schema/engine problems (unknown `next`/`goto`, duplicate ids,
-  unreachable events, etc.).
+  unreachable events, deck references to unknown cards, focus tags with too few pool
+  cards, etc.).
 - **Preview** plays the scenario start-to-finish and lists each step, budget and score.
 - **Save** persists it. Built-in scenarios are read-only.
 
 ### Modeling guidance
 
-- Keep 6–8 events; 1–2 real branch points; make each option a defensible trade-off.
-- Use `requires: { hasFlag: 'x_funded' }` to gate options on prior investment, and
+- Keep 6–8 events; make each option/card a defensible trade-off. Deck-based scenarios
+  get variety from the per-team draw rather than from explicit branches.
+- Fixed cards are shared by every team (fairness); pool cards are drawn per team. If you
+  add a `focusTags` entry, make sure **at least 3 pool cards** carry that tag so the
+  draw can honour the focus (`validateScenario` enforces this by default).
+- Use `requires: { hasFlag: 'x_funded' }` to gate cards on prior investment, and
   `grantsFlags` to record it. A funded control flag uses the pattern `<CONTROL>_funded`
   (e.g. `cbh_funded`) so coverage counts work.
 - Use `immediate` for this round's effect and `delayed` for the next round's effect.

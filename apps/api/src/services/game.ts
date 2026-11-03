@@ -8,9 +8,12 @@ import {
   conditionMet,
   finalScoreFor,
   getEvent,
+  getEventCards,
   getProductCard,
+  getVisibleSignals,
   initGameState,
   normalizeWeights,
+  prepareActiveEvent,
   resolveNextEventId,
   type DecisionOption,
   type GameStateData,
@@ -261,7 +264,7 @@ export async function getTeamWorkspace(teamId: string) {
 
   const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
   const options: (DecisionOption & { available: boolean; reason?: string })[] = event
-    ? event.options.map((o) => {
+    ? getEventCards(scenario, event, state).map((o) => {
         const reqOk = conditionMet(o.requires, state);
         const budgetOk = state.budget >= o.cost;
         const available = reqOk && budgetOk;
@@ -338,6 +341,9 @@ export async function getTeamWorkspace(teamId: string) {
           businessImpact: event.businessImpact,
           controlsInPlay: event.controlsInPlay ?? [],
           options,
+          signals: getVisibleSignals(event, state),
+          hypotheses: event.hypotheses ?? [],
+          clarity: state.knowledge?.clarity ?? 0,
         }
       : null,
     submittedDecision: submitted
@@ -370,7 +376,7 @@ export async function submitDecision(
 
   const scenario = await loadScenarioForSession(team.sessionId);
   const event = getEvent(scenario, state.currentEventId);
-  const option = availableOptions(event, state).find((o) => o.id === input.optionId);
+  const option = availableOptions(scenario, event, state).find((o) => o.id === input.optionId);
   if (!option) throw ApiError.badRequest('This option is not available for the current state');
 
   const decision = await prisma.submittedDecision.upsert({
@@ -535,6 +541,11 @@ export async function resolveRound(sessionId: string, actorId: string, options: 
       if (!next) {
         ns.metrics = applyDeltas(ns.metrics, ns.pendingDelayed);
         ns.status = 'ended';
+        ns.hand = [];
+        ns.handEventId = undefined;
+      } else {
+        // draw the next round's hand and grant per-round income
+        prepareActiveEvent(scenario, ns);
       }
       nextState = ns;
       appliedDeltas = { ...NO_RESPONSE_PENALTY };
