@@ -183,6 +183,9 @@ export function ConsolePage() {
               >
                 {t('console.copyCodes')}
               </button>
+              <span className="text-slate-500">
+                {t('console.seed')}: <span className="font-mono text-slate-300">{data.seed}</span>
+              </span>
             </div>
           </Card>
 

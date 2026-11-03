@@ -73,6 +73,8 @@ model WorkshopSession {
   currentRound Int               @default(0)
   deadlineAt   DateTime?
   deadlineSeconds Int            @default(180)
+  /// Reproducibility seed shared by all teams in the session.
+  seed         Int               @default(0)
   createdAt    DateTime          @default(now())
   startedAt    DateTime?
   endedAt      DateTime?

@@ -46,6 +46,7 @@ export interface SessionListItem {
   teamCount: number;
   scenarioKey: string;
   scenarioName: string;
+  seed: number;
   createdAt: string;
 }
 
@@ -97,6 +98,7 @@ export interface SessionConsoleData {
   deadlineSeconds: number;
   startedAt: string | null;
   endedAt: string | null;
+  seed: number;
   weights: Record<string, number>;
   scenario: {
     key: string;

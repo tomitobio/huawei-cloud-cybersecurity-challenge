@@ -61,6 +61,9 @@ const resources = {
         teamCount: 'equipos',
         open: 'Abrir consola',
         joinCode: 'Código de sesión',
+        seed: 'Seed (reproducibilidad)',
+        seedPlaceholder: 'Aleatoria',
+        seedHint: 'Dejá vacío para una seed aleatoria. Compartila para reproducir la partida.',
       },
       editor: {
         title: 'Editor de escenarios',
@@ -146,6 +149,7 @@ const resources = {
         members: 'Integrantes',
         copyCodes: 'Copiar códigos de equipo',
         scenario: 'Escenario',
+        seed: 'Seed',
       },
       team: {
         title: 'Espacio del equipo',
@@ -249,6 +253,9 @@ const resources = {
         teamCount: 'teams',
         open: 'Open console',
         joinCode: 'Session code',
+        seed: 'Seed (reproducibility)',
+        seedPlaceholder: 'Random',
+        seedHint: 'Leave empty for a random seed. Share it to reproduce the run.',
       },
       editor: {
         title: 'Scenario editor',
@@ -334,6 +341,7 @@ const resources = {
         members: 'Members',
         copyCodes: 'Copy team codes',
         scenario: 'Scenario',
+        seed: 'Seed',
       },
       team: {
         title: 'Team workspace',

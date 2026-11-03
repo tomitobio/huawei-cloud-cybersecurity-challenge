@@ -94,6 +94,7 @@ export async function generateReport(sessionId: string) {
       date: session.startedAt ?? session.createdAt,
       scenario: scenario.name,
       scenarioKey: scenario.key,
+      seed: session.seed,
       instructor: session.instructor.displayName,
       organization: scenario.organization,
       status: session.status,

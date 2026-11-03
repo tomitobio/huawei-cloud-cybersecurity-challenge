@@ -29,7 +29,9 @@ Demo accounts (seeded, fictional): `instructor@hcc.local` / `Instructor123!` and
 2. **Check health.** Open the app and confirm the login page loads. `/api/health`
    returns `{ "ok": true }`.
 3. **Create the session.** *Sessions → New session*: name it, pick a scenario, list the
-   teams (one per line). The console opens automatically.
+   teams (one per line). Optionally set a **seed** to make the run reproducible; leave it
+   blank for a random one (shown afterwards on the session and in the console/report).
+   The console opens automatically.
 4. **Collect the codes.** The console shows a **session code**, a **join code per team**,
    and an **audience link**. Share team codes with each team; share the audience link
    with the room/projector.
@@ -147,7 +149,10 @@ Logs: API `/tmp/api.log`, web `/tmp/web.log` (when started via the helper script
 ## 7. Data, privacy and safety
 
 - All organizations, incidents, telemetry and results are **fictional**.
-- The engine is **deterministic** (no randomness) for reproducibility; results are fully
-  explainable from recorded `MetricChange` rows.
+- The engine is **deterministic and replayable**: same seed + same decisions => same
+  results, fully explainable from recorded `MetricChange` rows. Scenarios may opt into
+  reproducible variability via a per-option `variance` factor (default `0` = no change);
+  the session's single **seed** drives it, so all teams in a session share the same
+  instance and a run can be reproduced later from the seed shown in the report.
 - No real exploits, malware or attack tooling is used or distributed.
 - Product claims link to official Huawei Cloud documentation; limitations are stated.

@@ -76,6 +76,24 @@ describe('API authorization and gameplay', () => {
     teamBId = res.body.session.teams[1].id;
   });
 
+  it('persists an explicit seed and exposes it on the session console and list', async () => {
+    const res = await instructor
+      .post('/api/sessions')
+      .send({
+        name: `Seeded Session ${stamp}`,
+        scenarioKey: 'ransomware-retail',
+        seed: 4242,
+        teams: [{ name: 'Seed Team', color: '#34d399' }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.session.seed).toBe(4242);
+    createdSessionIds.push(res.body.session.id);
+
+    const list = await instructor.get('/api/sessions');
+    const found = list.body.sessions.find((s: { id: string }) => s.id === res.body.session.id);
+    expect(found.seed).toBe(4242);
+  });
+
   it('a captain joins a team', async () => {
     const res = await captain.post('/api/join').send({ code: teamACode, displayName: 'Cap', role: 'CAPTAIN' });
     expect(res.status).toBe(201);

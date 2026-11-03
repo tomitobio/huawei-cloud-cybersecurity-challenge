@@ -67,3 +67,5 @@ jobs:
 
       - name: Build web app
         run: npm run build -w @hcc/web
+        env:
+          NODE_ENV: production

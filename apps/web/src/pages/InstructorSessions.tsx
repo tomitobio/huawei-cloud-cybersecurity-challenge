@@ -17,6 +17,7 @@ export function SessionsPage() {
   const [name, setName] = useState('');
   const [scenarioKey, setScenarioKey] = useState('');
   const [teamNames, setTeamNames] = useState('Equipo Alfa\nEquipo Bravo');
+  const [seed, setSeed] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -45,7 +46,12 @@ export function SessionsPage() {
         .map((n) => n.trim())
         .filter(Boolean)
         .map((n, i) => ({ name: n, color: ['#22d3ee', '#f472b6', '#fbbf24', '#34d399', '#a78bfa'][i % 5] }));
-      const res = await api.post<{ session: { id: string } }>('/sessions', { name, scenarioKey, teams });
+      const res = await api.post<{ session: { id: string } }>('/sessions', {
+        name,
+        scenarioKey,
+        seed: seed.trim() === '' ? undefined : Number(seed.trim()),
+        teams,
+      });
       navigate(`/sessions/${res.session.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
@@ -88,6 +94,17 @@ export function SessionsPage() {
                 onChange={(e) => setTeamNames(e.target.value)}
               />
             </div>
+            <div>
+              <label className="label">{t('sessions.seed')}</label>
+              <input
+                className="input font-mono"
+                inputMode="numeric"
+                placeholder={t('sessions.seedPlaceholder')}
+                value={seed}
+                onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+              <p className="mt-1 text-xs text-slate-500">{t('sessions.seedHint')}</p>
+            </div>
             {error && (
               <div className="sm:col-span-2">
                 <Banner kind="error">{error}</Banner>
@@ -122,6 +139,9 @@ export function SessionsPage() {
                 </span>
                 <span className="ml-auto font-mono text-accent-cyan">{s.joinCode}</span>
               </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {t('sessions.seed')}: <span className="font-mono">{s.seed}</span>
+              </p>
               <Link to={`/sessions/${s.id}`} className="btn-ghost mt-4">
                 {t('sessions.open')}
               </Link>
