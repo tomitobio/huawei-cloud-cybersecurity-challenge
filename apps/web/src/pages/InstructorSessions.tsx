@@ -137,7 +137,12 @@ export function SessionsPage() {
                 <h3 className="font-semibold text-slate-100">{s.name}</h3>
                 <StatusPill status={s.status} />
               </div>
-              <p className="mt-1 text-xs text-slate-500">{s.scenarioName}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {(() => {
+                  const sc = scenarios.find((x) => x.key === s.scenarioKey);
+                  return sc ? lt(sc.name) : s.scenarioName;
+                })()}
+              </p>
               <div className="mt-3 flex items-center gap-4 text-xs text-slate-400">
                 <span>
                   {s.teamCount} {t('sessions.teamCount')}

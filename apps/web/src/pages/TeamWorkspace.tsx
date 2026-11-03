@@ -23,7 +23,7 @@ export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { t } = useTranslation();
   const { lt } = useLang();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<TeamWorkspaceData | null>(null);
   const [selected, setSelected] = useState<string>('');
@@ -39,6 +39,7 @@ export function TeamWorkspacePage() {
   }, [teamId]);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       navigate('/join');
       return;
@@ -59,7 +60,7 @@ export function TeamWorkspacePage() {
       window.clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamId, load, user]);
+  }, [teamId, load, user, authLoading]);
 
   useEffect(() => {
     if (data?.session.id) joinSessionRoom(data.session.id);
@@ -129,7 +130,7 @@ export function TeamWorkspacePage() {
         <span className="h-3 w-3 rounded-full" style={{ background: data.team.color }} />
         <h1 className="text-xl font-semibold text-white">{data.team.name}</h1>
         <StatusPill status={data.session.status} />
-        <span className="chip font-mono">R{data.session.currentRound}</span>
+        <span className="chip font-mono">R{event?.round ?? data.session.currentRound}</span>
         {user && <span className="chip">{user.displayName} · {user.role}</span>}
         <div className="ml-auto text-right">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('console.timeLeft')}</p>
@@ -295,6 +296,11 @@ export function TeamWorkspacePage() {
               <span className="text-slate-400">{t('common.budget')}</span>
               <span className="font-mono text-lg text-white">{data.state.budget}</span>
             </div>
+            {typeof data.session.incomePerRound === 'number' && data.session.incomePerRound > 0 && (
+              <p className="mt-1 text-right text-[11px] text-slate-500">
+                {t('team.budgetIncludes', { income: data.session.incomePerRound })}
+              </p>
+            )}
           </Card>
 
           <Card>
@@ -391,14 +397,20 @@ function OptionCard({
               <span className="chip text-[10px] text-accent-amber">★ {t('team.premium')}</span>
             )}
             {option.kind === 'investigate' && (
-              <span className="chip text-[10px] text-accent-cyan">🔍 {t('team.investigate')}</span>
+              <span className="chip text-[10px] text-accent-cyan">
+                🔍 {t('team.investigate')}
+                {option.revealsSignals && option.revealsSignals.length > 0 && ` · ${t('team.revealsSignals', { count: option.revealsSignals.length })}`}
+              </span>
+            )}
+            {option.kind === 'investigate' && typeof option.clarityDelta === 'number' && option.clarityDelta > 0 && (
+              <span className="chip text-[10px] text-accent-cyan">{t('team.clarityGain', { pct: Math.round(option.clarityDelta * 100) })}</span>
             )}
             {option.controls.map((c) => (
               <span key={c} className="chip text-[10px] text-accent-cyan">{c}</span>
             ))}
             {option.delayed && (
               <span className="chip text-[10px] text-amber-200">
-                delayed: {Object.entries(option.delayed).map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`).join(', ')}
+                delayed: {Object.entries(option.delayed).map(([k, v]) => `${t(`metrics.${k}`, { defaultValue: k })} ${v > 0 ? '+' : ''}${v}`).join(', ')}
               </span>
             )}
             {option.risks && option.risks.length > 0 && (

@@ -315,6 +315,8 @@ export async function getTeamWorkspace(teamId: string) {
       status: team.session.status,
       currentRound: team.session.currentRound,
       deadlineAt: team.session.deadlineAt,
+      budgetStart: team.budgetStart,
+      incomePerRound: scenario.economy?.incomePerRound ?? 0,
     },
     scenario: {
       name: scenario.name,

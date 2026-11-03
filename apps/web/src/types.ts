@@ -137,6 +137,8 @@ export interface OptionData {
   kind?: 'action' | 'investigate';
   premium?: boolean;
   premiumOnFocus?: boolean;
+  revealsSignals?: string[];
+  clarityDelta?: number;
   available: boolean;
   reason?: string;
 }
@@ -158,7 +160,15 @@ export interface ProposalData {
 
 export interface TeamWorkspaceData {
   team: { id: string; name: string; color: string; joinCode: string; maturity: string };
-  session: { id: string; name: string; status: string; currentRound: number; deadlineAt: string | null };
+  session: {
+    id: string;
+    name: string;
+    status: string;
+    currentRound: number;
+    deadlineAt: string | null;
+    budgetStart?: number;
+    incomePerRound?: number;
+  };
   scenario: {
     name: LocalizedText;
     summary: LocalizedText;

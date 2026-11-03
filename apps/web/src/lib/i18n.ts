@@ -195,6 +195,10 @@ const resources = {
         investigate: 'Investigar',
         signalRevealed: 'Confirmada',
         signalOpen: 'Sin confirmar',
+        budgetIncludes: 'Incluye +{{income}} de ingreso por ronda',
+        revealsSignals_one: 'Revela {{count}} señal',
+        revealsSignals_other: 'Revela {{count}} señales',
+        clarityGain: '+{{pct}}% claridad',
       },
       metrics: {
         continuity: 'Continuidad',
@@ -401,6 +405,10 @@ const resources = {
         investigate: 'Investigate',
         signalRevealed: 'Confirmed',
         signalOpen: 'Unconfirmed',
+        budgetIncludes: 'Includes +{{income}} per-round income',
+        revealsSignals_one: 'Reveals {{count}} signal',
+        revealsSignals_other: 'Reveals {{count}} signals',
+        clarityGain: '+{{pct}}% clarity',
       },
       metrics: {
         continuity: 'Continuity',
