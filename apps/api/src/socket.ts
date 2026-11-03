@@ -40,7 +40,7 @@ export function initSocket(server: HttpServer): IoServer {
         const allowed = await userCanAccessSession(payload.sub, payload.role, session.id);
         if (!allowed) return;
         socket.join(`session:${session.id}`);
-        if (payload.role === 'CAPTAIN' || payload.role === 'PARTICIPANT') {
+        if (payload.role === 'MEMBER') {
           const membership = await prisma.teamMembership.findFirst({
             where: { userId: payload.sub, team: { sessionId: session.id } },
           });

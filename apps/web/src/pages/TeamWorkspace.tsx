@@ -26,7 +26,6 @@ export function TeamWorkspacePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<TeamWorkspaceData | null>(null);
-  const [isCaptain, setIsCaptain] = useState(false);
   const [selected, setSelected] = useState<string>('');
   const [rationale, setRationale] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +33,8 @@ export function TeamWorkspacePage() {
 
   const load = useCallback(async () => {
     if (!teamId) return;
-    const res = await api.get<{ workspace: TeamWorkspaceData; isCaptain: boolean }>(`/teams/${teamId}`);
+    const res = await api.get<{ workspace: TeamWorkspaceData }>(`/teams/${teamId}`);
     setData(res.workspace);
-    setIsCaptain(res.isCaptain);
     if (res.workspace.submittedDecision) setSelected(res.workspace.submittedDecision.optionId);
   }, [teamId]);
 
@@ -132,8 +130,7 @@ export function TeamWorkspacePage() {
         <h1 className="text-xl font-semibold text-white">{data.team.name}</h1>
         <StatusPill status={data.session.status} />
         <span className="chip font-mono">R{data.session.currentRound}</span>
-        {!isCaptain && user && <span className="chip">{user.displayName} · {user.role}</span>}
-        {isCaptain && <span className="chip border-accent-amber/40 text-accent-amber">{t('join.captain')}</span>}
+        {user && <span className="chip">{user.displayName} · {user.role}</span>}
         <div className="ml-auto text-right">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('console.timeLeft')}</p>
           <Countdown deadlineAt={data.session.deadlineAt} label={t('console.timeLeft')} />
@@ -210,13 +207,12 @@ export function TeamWorkspacePage() {
               <div className="mt-3 flex items-center gap-3">
                 <button
                   className="btn-primary"
-                  disabled={!canAct || !isCaptain || !selected}
-                  title={!canAct ? disabledReason : !isCaptain ? t('team.onlyCaptain') : undefined}
+                  disabled={!canAct || !selected}
+                  title={!canAct ? disabledReason : undefined}
                   onClick={() => void submitDecision()}
                 >
                   {data.submittedDecision ? `↻ ${t('team.submit')}` : t('team.submit')}
                 </button>
-                {!isCaptain && <span className="text-xs text-slate-500">{t('team.onlyCaptain')}</span>}
                 {data.submittedDecision && (
                   <span className="text-xs text-accent-emerald">
                     ✔ {t('team.submitted')}: {data.submittedDecision.optionId}

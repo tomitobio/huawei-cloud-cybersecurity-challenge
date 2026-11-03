@@ -109,7 +109,7 @@ function Home() {
   if (loading) return <Centered>Loading…</Centered>;
   if (user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR') return <Navigate to="/sessions" replace />;
   const teamId = localStorage.getItem('hcc_teamId');
-  if ((user?.role === 'CAPTAIN' || user?.role === 'PARTICIPANT') && teamId) return <Navigate to={`/team/${teamId}`} replace />;
+  if (user?.role === 'MEMBER' && teamId) return <Navigate to={`/team/${teamId}`} replace />;
   return <Navigate to="/join" replace />;
 }
 

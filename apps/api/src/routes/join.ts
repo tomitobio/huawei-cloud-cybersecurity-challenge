@@ -9,8 +9,9 @@ import { env } from '../env';
 export const joinRouter = Router();
 
 /**
- * A participant joins a team using the team's join code. A lightweight user
- * account is created for auditing and role assignment (no email needed).
+ * A team member joins a team using the team's join code. A lightweight user
+ * account is created for auditing (no email needed). Every team member has the
+ * same permissions; there is no captain/participant split.
  */
 joinRouter.post(
   '/join',
@@ -20,7 +21,7 @@ joinRouter.post(
     if (displayName.length < 1 || displayName.length > 60) {
       throw ApiError.badRequest('A display name (1-60 chars) is required');
     }
-    const role = req.body.role === 'CAPTAIN' ? 'CAPTAIN' : 'PARTICIPANT';
+    const role = 'MEMBER';
 
     const team = await prisma.team.findUnique({
       where: { joinCode: code.toUpperCase() },
@@ -39,7 +40,7 @@ joinRouter.post(
       },
     });
     await prisma.teamMembership.create({
-      data: { userId: user.id, teamId: team.id, role: role === 'CAPTAIN' ? 'CAPTAIN' : 'PARTICIPANT' },
+      data: { userId: user.id, teamId: team.id },
     });
 
     const token = signToken({ sub: user.id, role, displayName });

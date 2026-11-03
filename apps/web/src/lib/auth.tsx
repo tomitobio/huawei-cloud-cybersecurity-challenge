@@ -5,7 +5,7 @@ export interface AuthUser {
   id: string;
   email?: string;
   displayName: string;
-  role: 'ADMIN' | 'INSTRUCTOR' | 'CAPTAIN' | 'PARTICIPANT' | 'AUDIENCE';
+  role: 'ADMIN' | 'INSTRUCTOR' | 'MEMBER' | 'AUDIENCE';
 }
 
 interface AuthContextValue {

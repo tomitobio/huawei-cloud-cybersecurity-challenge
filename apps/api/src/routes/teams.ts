@@ -12,32 +12,29 @@ async function getMembership(userId: string, teamId: string) {
   return prisma.teamMembership.findFirst({ where: { userId, teamId }, include: { team: { include: { session: true } } } });
 }
 
-async function assertTeamAccess(userId: string, role: string, teamId: string, requireCaptain = false) {
+async function assertTeamAccess(userId: string, role: string, teamId: string) {
   const team = await prisma.team.findUnique({ where: { id: teamId }, include: { session: true } });
   if (!team) throw ApiError.notFound('Team not found');
-  if (role === 'ADMIN') return { team, captain: true };
-  if (team.session.instructorId === userId) return { team, captain: false };
+  if (role === 'ADMIN') return team;
+  if (team.session.instructorId === userId) return team;
   const membership = await getMembership(userId, teamId);
   if (!membership) throw ApiError.forbidden('You do not belong to this team');
-  if (requireCaptain && membership.role !== 'CAPTAIN' && role !== 'INSTRUCTOR') {
-    throw ApiError.forbidden('Only the team captain can submit the final decision');
-  }
-  return { team, captain: membership.role === 'CAPTAIN' };
+  return team;
 }
 
 teamRouter.get(
   '/teams/:id',
   asyncHandler<AuthedRequest>(async (req, res) => {
-    const { captain } = await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id);
+    await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id);
     const workspace = await getTeamWorkspace(req.params.id);
-    res.json({ workspace, isCaptain: captain || req.user!.role === 'INSTRUCTOR' });
+    res.json({ workspace });
   }),
 );
 
 teamRouter.post(
   '/teams/:id/decision',
   asyncHandler<AuthedRequest>(async (req, res) => {
-    const { team } = await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id, true);
+    const team = await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id);
     const input = decisionSubmissionSchema.parse(req.body);
     const decision = await submitDecision(team.id, req.user!.sub, input);
     res.json({ decision: { eventId: decision.eventId, optionId: decision.optionId } });

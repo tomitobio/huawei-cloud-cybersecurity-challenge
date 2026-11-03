@@ -94,23 +94,24 @@ describe('API authorization and gameplay', () => {
     expect(found.seed).toBe(4242);
   });
 
-  it('a captain joins a team', async () => {
-    const res = await captain.post('/api/join').send({ code: teamACode, displayName: 'Cap', role: 'CAPTAIN' });
+  it('a member joins a team', async () => {
+    const res = await captain.post('/api/join').send({ code: teamACode, displayName: 'Cap' });
     expect(res.status).toBe(201);
     createdUserIds.push(res.body.user.id);
     expect(res.body.team.id).toBe(teamAId);
+    expect(res.body.user.role).toBe('MEMBER');
   });
 
-  it('a participant joins the same team', async () => {
-    const res = await participant.post('/api/join').send({ code: teamACode, displayName: 'Part', role: 'PARTICIPANT' });
+  it('a second member joins the same team', async () => {
+    const res = await participant.post('/api/join').send({ code: teamACode, displayName: 'Part' });
     expect(res.status).toBe(201);
     createdUserIds.push(res.body.user.id);
-    expect(res.body.user.role).toBe('PARTICIPANT');
+    expect(res.body.user.role).toBe('MEMBER');
   });
 
   it('an outsider (non-member) joins team B', async () => {
     const code = (await prisma.team.findUnique({ where: { id: teamBId } }))!.joinCode;
-    const res = await outsider.post('/api/join').send({ code, displayName: 'Other', role: 'CAPTAIN' });
+    const res = await outsider.post('/api/join').send({ code, displayName: 'Other' });
     createdUserIds.push(res.body.user.id);
     expect(res.status).toBe(201);
   });
@@ -129,7 +130,6 @@ describe('API authorization and gameplay', () => {
     expect(raw).not.toContain('instructorNotes');
     expect(raw).not.toContain('e4-admin'); // future event must not leak
     expect(res.body.workspace.currentEvent.id).toBe('e1-investment');
-    expect(res.body.isCaptain).toBe(true);
   });
 
   it('a team cannot access another team workspace', async () => {
@@ -137,14 +137,14 @@ describe('API authorization and gameplay', () => {
     expect(res.status).toBe(403);
   });
 
-  it('a participant cannot submit the final decision', async () => {
-    const res = await participant
+  it('a non-member cannot submit a decision for another team', async () => {
+    const res = await outsider
       .post(`/api/teams/${teamAId}/decision`)
       .send({ optionId: 'pkg-balanced', rationale: 'nope', expectedVersion: 0 });
     expect(res.status).toBe(403);
   });
 
-  it('captain submits a decision; stale version is rejected', async () => {
+  it('any team member submits a decision; stale version is rejected', async () => {
     const ok = await captain
       .post(`/api/teams/${teamAId}/decision`)
       .send({ optionId: 'pkg-balanced', rationale: 'balanced', expectedVersion: 0 });

@@ -181,4 +181,4 @@ export interface GameStateData {
 
 export type SessionStatus = 'LOBBY' | 'ACTIVE' | 'PAUSED' | 'ENDED';
 
-export type UserRole = 'ADMIN' | 'INSTRUCTOR' | 'CAPTAIN' | 'PARTICIPANT' | 'AUDIENCE';
+export type UserRole = 'ADMIN' | 'INSTRUCTOR' | 'MEMBER' | 'AUDIENCE';

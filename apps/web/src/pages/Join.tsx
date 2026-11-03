@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { Banner, Card } from '../components/ui';
 
 interface JoinResult {
-  user: { id: string; displayName: string; role: 'CAPTAIN' | 'PARTICIPANT' };
+  user: { id: string; displayName: string; role: 'MEMBER' };
   team: { id: string; name: string };
   session: { id: string; name: string };
 }
@@ -17,7 +17,6 @@ export function JoinPage() {
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<'CAPTAIN' | 'PARTICIPANT'>('PARTICIPANT');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +25,7 @@ export function JoinPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.post<JoinResult>('/join', { code: code.trim().toUpperCase(), displayName, role });
+      const res = await api.post<JoinResult>('/join', { code: code.trim().toUpperCase(), displayName });
       localStorage.setItem('hcc_teamId', res.team.id);
       await refresh();
       navigate(`/team/${res.team.id}`);
@@ -56,21 +55,6 @@ export function JoinPage() {
           <div>
             <label className="label">{t('join.name')}</label>
             <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">{t('join.role')}</label>
-            <div className="flex gap-2">
-              {(['PARTICIPANT', 'CAPTAIN'] as const).map((r) => (
-                <button
-                  type="button"
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={role === r ? 'btn-primary flex-1' : 'btn-ghost flex-1'}
-                >
-                  {r === 'CAPTAIN' ? t('join.captain') : t('join.participant')}
-                </button>
-              ))}
-            </div>
           </div>
           {error && <Banner kind="error">{error}</Banner>}
           <button className="btn-primary w-full" disabled={busy}>

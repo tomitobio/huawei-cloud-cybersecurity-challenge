@@ -13,8 +13,7 @@ datasource db {
 enum UserRole {
   ADMIN
   INSTRUCTOR
-  CAPTAIN
-  PARTICIPANT
+  MEMBER
   AUDIENCE
 }
 
@@ -29,11 +28,6 @@ enum MaturityLevel {
   LOW
   MEDIUM
   HIGH
-}
-
-enum MemberRole {
-  CAPTAIN
-  PARTICIPANT
 }
 
 model User {
@@ -106,7 +100,6 @@ model TeamMembership {
   id     String     @id @default(cuid())
   userId String
   teamId String
-  role   MemberRole @default(PARTICIPANT)
   user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   team   Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
   @@unique([userId, teamId])

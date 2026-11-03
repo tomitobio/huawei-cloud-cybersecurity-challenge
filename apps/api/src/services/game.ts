@@ -164,7 +164,7 @@ export async function getSessionConsole(sessionId: string) {
       joinCode: team.joinCode,
       budgetStart: team.budgetStart,
       maturity: team.maturity,
-      members: team.members.map((m) => ({ id: m.user.id, displayName: m.user.displayName, role: m.role })),
+      members: team.members.map((m) => ({ id: m.user.id, displayName: m.user.displayName, role: m.user.role })),
       state,
       score: state ? finalScoreFor(scenario, state) : 0,
       currentEvent: currentEvent
@@ -346,7 +346,7 @@ export async function getTeamWorkspace(teamId: string) {
     proposals,
     timeline,
     leaderboard,
-    members: team.members.map((m) => ({ id: m.user.id, displayName: m.user.displayName, role: m.role })),
+    members: team.members.map((m) => ({ id: m.user.id, displayName: m.user.displayName, role: m.user.role })),
   };
 }
 
