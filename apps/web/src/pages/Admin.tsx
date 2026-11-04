@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useLang } from '../lib/useLang';
 import { Card, EmptyState, SectionTitle } from '../components/ui';
@@ -31,7 +32,14 @@ export function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <SectionTitle title={t('nav.admin')} />
+      <SectionTitle
+        title={t('nav.admin')}
+        right={
+          <Link to="/cards" className="btn-ghost px-3 py-1 text-xs">
+            {t('cards.title')}
+          </Link>
+        }
+      />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">Users</h3>

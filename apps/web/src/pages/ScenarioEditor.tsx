@@ -4,7 +4,7 @@ import { CONTROL_IDS, METRIC_KEYS, type Scenario, type MetricKey } from '@hcc/sh
 import { api } from '../lib/api';
 import { useLang } from '../lib/useLang';
 import { Banner, Card, EmptyState, SectionTitle, cn } from '../components/ui';
-import type { ScenarioPreviewResult, ScenarioSummary } from '../types';
+import type { GameCardRow, ScenarioPreviewResult, ScenarioSummary } from '../types';
 
 /** A minimal, valid, playable scenario to start a new custom definition. */
 function blankScenario(key: string): Scenario {
@@ -93,6 +93,7 @@ export function ScenarioEditorPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [cardLib, setCardLib] = useState<GameCardRow[]>([]);
 
   async function loadList() {
     setLoading(true);
@@ -103,6 +104,14 @@ export function ScenarioEditorPage() {
 
   useEffect(() => {
     void loadList();
+    void (async () => {
+      try {
+        const res = await api.get<{ cards: GameCardRow[] }>('/cards');
+        setCardLib(res.cards.filter((c) => c.isActive !== false));
+      } catch {
+        setCardLib([]);
+      }
+    })();
   }, []);
 
   function resetFeedback() {
@@ -175,6 +184,50 @@ export function ScenarioEditorPage() {
 
   function patchWeight(key: MetricKey, value: number) {
     setDef((d) => (d ? { ...d, weights: { ...d.weights, [key]: value } } : d));
+  }
+
+  const emptyDeck: NonNullable<Scenario['deck']> = { fixed: [], pool: [], drawCount: 5 };
+
+  function patchDeck(p: Partial<NonNullable<Scenario['deck']>>) {
+    setDef((d) => (d ? { ...d, deck: { ...(d.deck ?? emptyDeck), ...p } } : d));
+  }
+
+  function toggleDeckCard(which: 'fixed' | 'pool', key: string) {
+    setDef((d) => {
+      if (!d) return d;
+      const deck = d.deck ?? emptyDeck;
+      const current = new Set(deck[which]);
+      if (current.has(key)) current.delete(key);
+      else current.add(key);
+      return { ...d, deck: { ...deck, [which]: [...current] } };
+    });
+  }
+
+  function patchDeckWeight(key: string, value: number) {
+    setDef((d) => {
+      if (!d) return d;
+      const deck = d.deck ?? emptyDeck;
+      return { ...d, deck: { ...deck, weights: { ...(deck.weights ?? {}), [key]: value } } };
+    });
+  }
+
+  function patchEventHand(index: number, hand: { fixed?: string[]; drawCount?: number } | undefined) {
+    if (!def) return;
+    const events = def.events.map((e, i) => (i === index ? { ...e, hand } : e));
+    setDef({ ...def, events });
+    setEventsText(JSON.stringify(events, null, 2));
+  }
+
+  function toggleEventHandFixed(index: number, key: string) {
+    if (!def) return;
+    const ev = def.events[index];
+    const current = new Set(ev.hand?.fixed ?? []);
+    if (current.has(key)) current.delete(key);
+    else current.add(key);
+    const next: { fixed?: string[]; drawCount?: number } = { ...(ev.hand ?? {}) };
+    next.fixed = [...current];
+    if (next.fixed.length === 0) delete next.fixed;
+    patchEventHand(index, Object.keys(next).length ? next : undefined);
   }
 
   function applyEventsJson(): boolean {
@@ -487,6 +540,177 @@ export function ScenarioEditorPage() {
                     ))}
                   </div>
                 </div>
+              </Card>
+
+              {/* Deck & cards */}
+              <Card className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-200">{t('editor.deckTitle')}</p>
+                  <span className="text-[11px] text-slate-500">{t('editor.deckHint')}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-1 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      disabled={!editing}
+                      checked={Boolean(def.deck?.serviceFixed)}
+                      onChange={(e) => patchDeck({ serviceFixed: e.target.checked })}
+                    />
+                    {t('editor.deckServiceFixed')}
+                  </label>
+                  <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <span>{t('editor.deckDrawCount')}</span>
+                    <input
+                      className="input w-20"
+                      type="number"
+                      min={0}
+                      disabled={!editing}
+                      value={def.deck?.drawCount ?? 5}
+                      onChange={(e) => patchDeck({ drawCount: Number(e.target.value) })}
+                    />
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    {(def.deck?.fixed ?? []).length} {t('editor.deckFixedLower')} · {(def.deck?.pool ?? []).length}{' '}
+                    {t('editor.deckPoolLower')}
+                  </span>
+                </div>
+
+                {cardLib.length === 0 ? (
+                  <EmptyState message={t('editor.deckNoCards')} />
+                ) : (
+                  <>
+                    <div>
+                      <p className="label">{t('editor.deckFixed')}</p>
+                      <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
+                        {cardLib.map((c) => {
+                          const active = (def.deck?.fixed ?? []).includes(c.cardKey);
+                          return (
+                            <button
+                              type="button"
+                              key={c.cardKey}
+                              disabled={!editing}
+                              onClick={() => toggleDeckCard('fixed', c.cardKey)}
+                              className={cn(
+                                'chip text-[11px]',
+                                active
+                                  ? 'border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan'
+                                  : 'text-slate-400',
+                              )}
+                            >
+                              {c.cardKey}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="label">{t('editor.deckPool')}</p>
+                      <div className="max-h-60 space-y-1 overflow-y-auto">
+                        {cardLib.map((c) => {
+                          const active = (def.deck?.pool ?? []).includes(c.cardKey);
+                          return (
+                            <div key={c.cardKey} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={!editing}
+                                onClick={() => toggleDeckCard('pool', c.cardKey)}
+                                className={cn(
+                                  'chip flex-1 justify-start text-left text-[11px]',
+                                  active
+                                    ? 'border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan'
+                                    : 'text-slate-400',
+                                )}
+                              >
+                                {c.cardKey}
+                                {c.label && <span className="ml-2 truncate text-slate-500">{lt(c.label)}</span>}
+                              </button>
+                              {active && (
+                                <input
+                                  className="input w-16"
+                                  type="number"
+                                  step="0.1"
+                                  min={0}
+                                  disabled={!editing}
+                                  title={t('editor.deckWeight')}
+                                  value={def.deck?.weights?.[c.cardKey] ?? c.baseWeight}
+                                  onChange={(e) => patchDeckWeight(c.cardKey, Number(e.target.value))}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="label">{t('editor.deckPerEvent')}</p>
+                      <div className="space-y-1">
+                        {def.events.map((ev, i) => (
+                          <details key={ev.id ?? i} className="rounded border border-base-700 p-2">
+                            <summary className="cursor-pointer text-xs text-slate-300">
+                              {t('editor.round')} {ev.round} · {lt(ev.title)}
+                              {ev.hand && (
+                                <span className="chip ml-2 text-[10px] text-accent-cyan">
+                                  {t('editor.deckOverride')}
+                                </span>
+                              )}
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                                <span>{t('editor.deckEventDrawCount')}</span>
+                                <input
+                                  className="input w-20"
+                                  type="number"
+                                  min={0}
+                                  disabled={!editing}
+                                  value={ev.hand?.drawCount ?? ''}
+                                  placeholder={String(def.deck?.drawCount ?? 5)}
+                                  onChange={(e) => {
+                                    const n = e.target.value;
+                                    const next: { fixed?: string[]; drawCount?: number } = { ...(ev.hand ?? {}) };
+                                    if (n === '') delete next.drawCount;
+                                    else next.drawCount = Number(n);
+                                    patchEventHand(i, Object.keys(next).length ? next : undefined);
+                                  }}
+                                />
+                                <button
+                                  className="btn-ghost px-2 py-1 text-[11px]"
+                                  disabled={!editing || !ev.hand}
+                                  onClick={() => patchEventHand(i, undefined)}
+                                >
+                                  {t('editor.deckClearOverride')}
+                                </button>
+                              </div>
+                              <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
+                                {cardLib.map((c) => {
+                                  const active = (ev.hand?.fixed ?? []).includes(c.cardKey);
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={c.cardKey}
+                                      disabled={!editing}
+                                      onClick={() => toggleEventHandFixed(i, c.cardKey)}
+                                      className={cn(
+                                        'chip text-[10px]',
+                                        active
+                                          ? 'border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan'
+                                          : 'text-slate-400',
+                                      )}
+                                    >
+                                      {c.cardKey}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </details>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </Card>
 
               {/* Events JSON */}

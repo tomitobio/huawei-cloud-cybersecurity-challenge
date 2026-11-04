@@ -18,6 +18,7 @@ import {
   saveCustomScenario,
   setScenarioActive,
 } from '../services/scenarioStore';
+import { embedScenarioCards } from '../services/cardStore';
 import { audit } from '../services/game';
 
 export const scenarioRouter = Router();
@@ -82,7 +83,7 @@ scenarioRouter.post(
         problems: ['The definition does not match the scenario schema'],
       });
     }
-    const problems = validateScenario(parsed.data.scenario as Scenario);
+    const problems = validateScenario(await embedScenarioCards(parsed.data.scenario as Scenario));
     res.json({ ok: problems.length === 0, issues: [], problems });
   }),
 );
@@ -101,6 +102,7 @@ scenarioRouter.post(
       scenario = await resolveScenarioDefinition(parsed.data.key);
     }
     if (!scenario) throw ApiError.notFound('Scenario not found');
+    scenario = await embedScenarioCards(scenario);
 
     const problems = validateScenario(scenario);
     let result;
@@ -124,7 +126,7 @@ scenarioRouter.post(
   requireRole('ADMIN', 'INSTRUCTOR'),
   asyncHandler<AuthedRequest>(async (req, res) => {
     const { scenario, isActive } = saveScenarioSchema.parse(req.body);
-    const row = await saveCustomScenario(scenario as Scenario, isActive ?? true);
+    const row = await saveCustomScenario(await embedScenarioCards(scenario as Scenario), isActive ?? true);
     await audit(null, req.user!.sub, 'scenario.saved', { key: row.key, version: row.version });
     res.status(201).json({ scenario: row.definition, key: row.key, isActive: row.isActive });
   }),
@@ -140,7 +142,7 @@ scenarioRouter.put(
       throw ApiError.badRequest('The payload key does not match the URL key');
     }
     if (SCENARIOS[req.params.key]) throw ApiError.badRequest('Built-in scenarios cannot be edited');
-    const row = await saveCustomScenario(scenario as Scenario, isActive ?? true);
+    const row = await saveCustomScenario(await embedScenarioCards(scenario as Scenario), isActive ?? true);
     await audit(null, req.user!.sub, 'scenario.updated', { key: row.key, version: row.version });
     res.json({ scenario: row.definition, key: row.key, isActive: row.isActive });
   }),

@@ -53,6 +53,30 @@ model Scenario {
   sessions   WorkshopSession[]
 }
 
+/// Global, reusable card library (the "fixed pool"). Scenarios embed copies of
+/// the cards they reference, so editing a card does not mutate running sessions.
+model GameCard {
+  id            String   @id @default(cuid())
+  cardKey       String   @unique
+  label         Json
+  description   Json
+  cost          Float    @default(0)
+  controls      String[] @default([])
+  tags          String[] @default([])
+  kind          String   @default("action")
+  immediate     Json?
+  delayed       Json?
+  scoreDelta    Float    @default(0)
+  clarityDelta  Float    @default(0)
+  revealsSignals String[] @default([])
+  premiumOnFocus Boolean @default(false)
+  serviceCard   Boolean  @default(false)
+  baseWeight    Float    @default(1)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model WorkshopSession {
   id           String            @id @default(cuid())
   name         String

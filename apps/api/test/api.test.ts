@@ -21,6 +21,8 @@ const instructor = request.agent(app);
 const captain = request.agent(app);
 const participant = request.agent(app);
 const outsider = request.agent(app);
+const admin = request.agent(app);
+const adminEmail = `test_admin_${stamp}@hcc.local`;
 
 beforeAll(async () => {
   await ensureScenario('ransomware-retail');
@@ -32,6 +34,14 @@ beforeAll(async () => {
       passwordHash: await hashPassword('Password123!'),
     },
   });
+  await prisma.user.create({
+    data: {
+      email: adminEmail,
+      displayName: 'Test Admin',
+      role: 'ADMIN',
+      passwordHash: await hashPassword('Password123!'),
+    },
+  });
 });
 
 afterAll(async () => {
@@ -40,6 +50,7 @@ afterAll(async () => {
   }
   await prisma.scenario.deleteMany({ where: { key: { in: createdScenarioKeys } } });
   await prisma.user.deleteMany({ where: { email: instructorEmail } });
+  await prisma.user.deleteMany({ where: { email: adminEmail } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
   await prisma.$disconnect();
 });
@@ -393,5 +404,63 @@ describe('session deletion', () => {
   it('returns 404 when deleting an unknown session', async () => {
     const res = await instructor.del('/api/sessions/does-not-exist');
     expect(res.status).toBe(404);
+  });
+
+  it('card library: instructors can read but not write', async () => {
+    const read = await instructor.get('/api/cards');
+    expect(read.status).toBe(200);
+    expect(Array.isArray(read.body.cards)).toBe(true);
+    expect(read.body.cards.length).toBeGreaterThan(0);
+
+    const write = await instructor.post('/api/cards').send({
+      cardKey: `t-forbidden-${stamp}`,
+      label: { es: 'X', en: 'X' },
+      description: { es: 'X', en: 'X' },
+      cost: 1,
+      controls: [],
+    });
+    expect(write.status).toBe(403);
+  });
+
+  it('card library: admin can create, update and delete a card', async () => {
+    const login = await admin.post('/api/auth/login').send({ email: adminEmail, password: 'Password123!' });
+    expect(login.status).toBe(200);
+    expect(login.body.user.role).toBe('ADMIN');
+
+    const key = `t-card-${stamp}`;
+    const created = await admin.post('/api/cards').send({
+      cardKey: key,
+      label: { es: 'Tarjeta prueba', en: 'Test card' },
+      description: { es: 'Descripción', en: 'Description' },
+      cost: 12,
+      controls: ['HSS'],
+      tags: ['test'],
+      scoreDelta: 4,
+      baseWeight: 2,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.card.cardKey).toBe(key);
+
+    const updated = await admin.put(`/api/cards/${key}`).send({
+      cardKey: key,
+      label: { es: 'Actualizada', en: 'Updated' },
+      description: { es: 'Descripción', en: 'Description' },
+      cost: 15,
+      controls: ['HSS', 'CFW'],
+      baseWeight: 3,
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.card.cost).toBe(15);
+
+    const del = await admin.del(`/api/cards/${key}`);
+    expect(del.status).toBe(200);
+
+    const after = await admin.get('/api/cards');
+    expect(after.body.cards.find((c: { cardKey: string }) => c.cardKey === key)).toBeUndefined();
+  });
+
+  it('card library: cannot delete a card referenced by a scenario', async () => {
+    const res = await admin.del('/api/cards/fix-monitor');
+    expect(res.status).toBe(409);
   });
 });

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { prisma } from '../src/db';
 import { hashPassword } from '../src/lib/passwords';
 import { ensureScenario, createSession } from '../src/services/game';
+import { CARD_LIBRARY } from '@hcc/shared';
 
 async function main() {
   // Fictional demo accounts. Change these before any real use.
@@ -32,6 +33,35 @@ async function main() {
   });
 
   await ensureScenario('ransomware-retail');
+
+  // Seed the global card library from the built-in card definitions so admins
+  // have an editable starting pool. Existing rows are left as-is (admin edits win).
+  for (const card of Object.values(CARD_LIBRARY)) {
+    await prisma.gameCard.upsert({
+      where: { cardKey: card.id },
+      update: {},
+      create: {
+        cardKey: card.id,
+        label: card.label as unknown as object,
+        description: card.description as unknown as object,
+        cost: card.cost,
+        controls: card.controls,
+        tags: card.tags ?? [],
+        kind: card.kind ?? 'action',
+        immediate: (card.immediate as unknown as object) ?? undefined,
+        delayed: (card.delayed as unknown as object) ?? undefined,
+        scoreDelta: card.scoreDelta ?? 0,
+        clarityDelta: card.clarityDelta ?? 0,
+        revealsSignals: card.revealsSignals ?? [],
+        premiumOnFocus: card.premiumOnFocus ?? false,
+        serviceCard: card.serviceCard ?? false,
+        baseWeight: card.baseWeight ?? 1,
+        isActive: true,
+      },
+    });
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[seed] Card library: ${Object.keys(CARD_LIBRARY).length} cards`);
 
   const existing = await prisma.workshopSession.findFirst({
     where: { instructorId: instructor.id, name: 'Demo — Ransomware Workshop' },

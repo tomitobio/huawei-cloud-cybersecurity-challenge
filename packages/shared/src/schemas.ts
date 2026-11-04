@@ -58,6 +58,14 @@ export const decisionOptionSchema = z.object({
   serviceCard: z.boolean().optional(),
 });
 
+/** Card-library input (a card without its scenario-local id, plus a stable key). */
+export const cardInputSchema = decisionOptionSchema
+  .omit({ id: true, premium: true })
+  .extend({
+    cardKey: z.string().min(1).max(80),
+    isActive: z.boolean().optional(),
+  });
+
 export const ambiguousSignalSchema = z.object({
   id: z.string().min(1),
   text: localizedTextSchema,
@@ -198,8 +206,7 @@ export const decisionSubmissionSchema = z
     path: ['optionIds'],
   });
 
-export const createTeamSchema = z.object({
-  name: z.string().min(1).max(60),
+export const createTeamSchema = z.object({  name: z.string().min(1).max(60),
   color: z.string().default('#22d3ee'),
   budget: z.number().min(0).optional(),
   maturity: z.enum(['low', 'medium', 'high']).optional(),

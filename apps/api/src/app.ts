@@ -11,6 +11,7 @@ import { catalogRouter } from './routes/catalog';
 import { sessionRouter } from './routes/sessions';
 import { teamRouter } from './routes/teams';
 import { audienceRouter } from './routes/audience';
+import { cardRouter } from './routes/cards';
 
 export function createApp() {
   const app = express();
@@ -34,6 +35,7 @@ export function createApp() {
   app.use('/api', catalogRouter);
   app.use('/api', sessionRouter);
   app.use('/api', teamRouter);
+  app.use('/api', cardRouter);
   app.use('/api', audienceRouter);
 
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

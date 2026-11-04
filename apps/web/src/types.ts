@@ -1,7 +1,27 @@
 import type { LocalizedText, Metrics, ControlId, ArchitectureNode } from '@hcc/shared';
 
-export interface ScenarioSummary {
-  key: string;
+/** A card in the global library (admin-managed), as returned by /cards. */
+export interface GameCardRow {
+  cardKey: string;
+  label: LocalizedText;
+  description: LocalizedText;
+  cost: number;
+  controls: ControlId[];
+  tags: string[];
+  kind: string;
+  immediate?: Record<string, number> | null;
+  delayed?: Record<string, number> | null;
+  scoreDelta: number;
+  clarityDelta: number;
+  revealsSignals: string[];
+  premiumOnFocus: boolean;
+  serviceCard: boolean;
+  baseWeight: number;
+  isActive: boolean;
+  updatedAt?: string;
+}
+
+export interface ScenarioSummary {  key: string;
   name: LocalizedText;
   summary: LocalizedText;
   version: number;

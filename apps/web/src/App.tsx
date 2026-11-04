@@ -7,6 +7,7 @@ import { LoginPage } from './pages/Login';
 import { JoinPage } from './pages/Join';
 import { SessionsPage } from './pages/InstructorSessions';
 import { ScenarioEditorPage } from './pages/ScenarioEditor';
+import { CardLibraryPage } from './pages/CardLibrary';
 import { ConsolePage } from './pages/InstructorConsole';
 import { PresentationPage } from './pages/Presentation';
 import { TeamWorkspacePage } from './pages/TeamWorkspace';
@@ -56,6 +57,11 @@ function Header() {
           {isStaff && (
             <NavLink to="/scenarios" className={({ isActive }) => navCls(isActive)}>
               {t('nav.scenarios')}
+            </NavLink>
+          )}
+          {isStaff && (
+            <NavLink to="/cards" className={({ isActive }) => navCls(isActive)}>
+              {t('nav.cards')}
             </NavLink>
           )}
           {user?.role === 'ADMIN' && (
@@ -145,7 +151,16 @@ export function App() {
                 <ScenarioEditorPage />
               </RequireStaff>
             }
-          />          <Route
+          />
+          <Route
+            path="/cards"
+            element={
+              <RequireStaff>
+                <CardLibraryPage />
+              </RequireStaff>
+            }
+          />
+          <Route
             path="/sessions/:id/present"
             element={
               <RequireStaff>
