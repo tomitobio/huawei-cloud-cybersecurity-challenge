@@ -55,6 +55,7 @@ export const decisionOptionSchema = z.object({
   revealsSignals: z.array(z.string()).optional(),
   clarityDelta: z.number().min(0).max(1).optional(),
   premium: z.boolean().optional(),
+  serviceCard: z.boolean().optional(),
 });
 
 export const ambiguousSignalSchema = z.object({
@@ -81,6 +82,7 @@ export const scenarioEventSchema = z.object({
   controlsInPlay: z.array(controlIdSchema).optional(),
   options: z.array(decisionOptionSchema).optional(),
   focusTags: z.array(z.string()).optional(),
+  incidentSeverity: z.number().min(0).max(5).optional(),
   hand: handConfigSchema.optional(),
   signals: z.array(ambiguousSignalSchema).optional(),
   hypotheses: z.array(localizedTextSchema).optional(),
@@ -131,6 +133,8 @@ export const scenarioSchema = z.object({
       fixed: z.array(z.string()),
       pool: z.array(z.string()),
       drawCount: z.number().int().min(0),
+      serviceFixed: z.boolean().optional(),
+      weights: z.record(z.string(), z.number()).optional(),
     })
     .optional(),
   economy: z
@@ -181,12 +185,18 @@ export const createSessionSchema = z.object({
     .optional(),
 });
 
-export const decisionSubmissionSchema = z.object({
-  optionId: z.string().min(1),
-  rationale: z.string().max(2000).optional().default(''),
-  /** Optimistic concurrency token. */
-  expectedVersion: z.number().int().min(0),
-});
+export const decisionSubmissionSchema = z
+  .object({
+    optionId: z.string().min(1).optional(),
+    optionIds: z.array(z.string().min(1)).max(20).optional(),
+    rationale: z.string().max(2000).optional().default(''),
+    /** Optimistic concurrency token. */
+    expectedVersion: z.number().int().min(0),
+  })
+  .refine((v) => (v.optionIds?.length ?? 0) > 0 || Boolean(v.optionId), {
+    message: 'Provide optionId or a non-empty optionIds list',
+    path: ['optionIds'],
+  });
 
 export const createTeamSchema = z.object({
   name: z.string().min(1).max(60),

@@ -79,26 +79,43 @@ export function cardIndex(scenario: Scenario): Map<string, DecisionOption> {
 }
 
 /**
- * Apply focus-premium pricing to a card for a given event: when a
- * `premiumOnFocus` card's tags intersect the event's `focusTags`, its cost and
- * score are scaled by `economy.focus`. Pure; returns a copy when scaled.
+ * Incident severity for an event: explicit `incidentSeverity`, otherwise derived
+ * from the round (later rounds are treated as more severe). Clamped to >= 1.
+ */
+export function incidentSeverityFor(event: ScenarioEvent): number {
+  if (typeof event.incidentSeverity === 'number') return Math.max(1, event.incidentSeverity);
+  return 1 + Math.min(0.5, Math.max(0, ((event.round ?? 1) - 1) * 0.1));
+}
+
+/**
+ * Apply focus-premium pricing and service-severity pricing to a card for a given
+ * event. Focus premium scales cost & score when a `premiumOnFocus` card's tags
+ * hit the event focus. Service cards (`serviceCard`) additionally scale their
+ * cost by the event's incident severity. Pure; returns a copy when scaled.
  */
 export function effectiveCard(
   card: DecisionOption,
   event: ScenarioEvent,
   scenario: Scenario,
 ): DecisionOption {
-  if (!card.premiumOnFocus) return card;
-  const focus = new Set(event.focusTags ?? []);
-  const matches = (card.tags ?? []).some((tag) => focus.has(tag));
-  if (!matches) return card;
-  const mult = scenario.economy?.focus ?? { costMultiplier: 1, scoreMultiplier: 1 };
-  return {
-    ...card,
-    cost: Math.round(card.cost * mult.costMultiplier),
-    scoreDelta: Math.round((card.scoreDelta ?? 0) * mult.scoreMultiplier * 100) / 100,
-    premium: true,
-  };
+  let out = card;
+  if (card.premiumOnFocus) {
+    const focus = new Set(event.focusTags ?? []);
+    if ((card.tags ?? []).some((tag) => focus.has(tag))) {
+      const mult = scenario.economy?.focus ?? { costMultiplier: 1, scoreMultiplier: 1 };
+      out = {
+        ...out,
+        cost: Math.round(out.cost * mult.costMultiplier),
+        scoreDelta: Math.round((out.scoreDelta ?? 0) * mult.scoreMultiplier * 100) / 100,
+        premium: true,
+      };
+    }
+  }
+  if (card.serviceCard) {
+    const severity = incidentSeverityFor(event);
+    if (severity !== 1) out = { ...out, cost: Math.round(out.cost * severity) };
+  }
+  return out;
 }
 
 /**
@@ -143,7 +160,7 @@ function drawPool(
     if (!card) continue;
     if (!conditionMet(card.requires, state)) continue;
     const matches = (card.tags ?? []).filter((tag) => focus.has(tag)).length;
-    let weight = card.baseWeight ?? 1;
+    let weight = scenario.deck?.weights?.[id] ?? card.baseWeight ?? 1;
     weight *= 1 + matches * 1.5;
     if (matches > 0) weight *= 1 + clarity * 0.5;
     candidates.push({ id, weight: Math.max(0.0001, weight) });
@@ -187,7 +204,17 @@ export function prepareActiveEvent(scenario: Scenario, state: GameStateData): Ga
 
   const deck = scenario.deck;
   const handCfg = event.hand ?? {};
-  const fixed = handCfg.fixed ?? deck.fixed;
+  const baseFixed = handCfg.fixed ?? deck.fixed;
+  const fixed = [...baseFixed];
+  // Inject the Huawei service fixed cards relevant to the incident in play.
+  if (deck.serviceFixed && !handCfg.fixed) {
+    const inPlay = new Set(event.controlsInPlay ?? []);
+    for (const card of scenario.cards ?? []) {
+      if (card.serviceCard && card.controls.some((c) => inPlay.has(c)) && !fixed.includes(card.id)) {
+        fixed.push(card.id);
+      }
+    }
+  }
   const pool = handCfg.pool ?? deck.pool;
   const drawCount = handCfg.drawCount ?? deck.drawCount;
   const remaining = state.remainingPool ?? [...deck.pool];
@@ -276,19 +303,48 @@ export interface DecisionResult {
 }
 
 /**
- * Apply a decision to a game state. Pure & deterministic.
+ * Validate a multi-card selection for an event. Returns an EngineError code or
+ * null when the selection is valid. Used by the API before persisting a decision.
+ */
+export function selectionProblem(
+  scenario: Scenario,
+  event: ScenarioEvent,
+  state: GameStateData,
+  optionIds: string[],
+): string | null {
+  const ids = [...new Set(optionIds)].filter(Boolean);
+  if (ids.length === 0) return 'NO_OPTION';
+  const cards = getEventCards(scenario, event, state);
+  const chosen: DecisionOption[] = [];
+  for (const id of ids) {
+    const card = cards.find((o) => o.id === id);
+    if (!card) return 'OPTION_NOT_FOUND';
+    chosen.push(card);
+  }
+  for (const card of chosen) {
+    if (!conditionMet(card.requires, state)) return 'REQUIREMENT_NOT_MET';
+  }
+  const total = chosen.reduce((acc, c) => acc + c.cost, 0);
+  if (state.budget < total) return 'INSUFFICIENT_BUDGET';
+  return null;
+}
+
+/**
+ * Apply one or more decisions (multi-select) to a game state for the current
+ * event. Pure & deterministic.
  *
  * Order of operations:
- *  1. Flush previously pending delayed effects into metrics.
- *  2. Validate the option against the current event and requirements.
- *  3. Subtract cost, apply immediate effects, set/remove flags.
- *  4. Queue this option's delayed effects for the next round.
- *  5. Determine the next event via transitions, explicit `next`, or order.
+ *  1. Flush previously pending delayed effects into metrics (once).
+ *  2. Validate every chosen option against the current event, requirements and
+ *     the *combined* budget.
+ *  3. For each option: subtract cost, apply immediate effects, flags, investigation.
+ *  4. Queue each option's delayed effects for the next round (accumulated).
+ *  5. Advance the event once via transitions/next/order, record the decision.
  */
-export function applyDecision(
+export function applyDecisions(
   scenario: Scenario,
   inputState: GameStateData,
-  optionId: string,
+  optionIds: string[],
 ): DecisionResult {
   if (!inputState.currentEventId) {
     throw new EngineError('NO_ACTIVE_EVENT', 'No active event to decide on');
@@ -296,6 +352,8 @@ export function applyDecision(
   if (inputState.status !== 'active') {
     throw new EngineError('GAME_ENDED', 'The simulation has ended for this team');
   }
+  const ids = [...new Set(optionIds)].filter(Boolean);
+  if (ids.length === 0) throw new EngineError('NO_OPTION', 'At least one option is required');
 
   const state: GameStateData = {
     ...inputState,
@@ -315,22 +373,27 @@ export function applyDecision(
 
   const currentEventId = inputState.currentEventId;
   const event = getEvent(scenario, currentEventId);
-  const option = getEventCards(scenario, event, state).find((o) => o.id === optionId);
-  if (!option) throw new EngineError('OPTION_NOT_FOUND', `Option ${optionId} not found`);
-  if (!conditionMet(option.requires, state)) {
-    throw new EngineError('REQUIREMENT_NOT_MET', 'Option requirements are not satisfied');
+  const cards = getEventCards(scenario, event, state);
+  const chosen: DecisionOption[] = [];
+  for (const id of ids) {
+    const card = cards.find((o) => o.id === id);
+    if (!card) throw new EngineError('OPTION_NOT_FOUND', `Option ${id} not found`);
+    if (!conditionMet(card.requires, state)) {
+      throw new EngineError('REQUIREMENT_NOT_MET', 'Option requirements are not satisfied');
+    }
+    chosen.push(card);
   }
-  if (state.budget < option.cost) {
-    throw new EngineError('INSUFFICIENT_BUDGET', 'Not enough budget for this option');
+  const totalCost = chosen.reduce((acc, c) => acc + c.cost, 0);
+  if (state.budget < totalCost) {
+    throw new EngineError('INSUFFICIENT_BUDGET', 'Not enough budget for this selection');
   }
 
-  // Reproducible variability: when an option declares `variance`, jitter its
-  // magnitudes using a stream derived from the session seed + decision counter.
-  const variance = normalizeVariance(option.variance);
+  // Reproducible variability: jitter each option's magnitudes using a stream
+  // derived from the session seed + decision counter.
   const rngCounter = inputState.rngCounter ?? 0;
-  const rng = variance > 0 ? mulberry32(mixSeed(inputState.seed ?? 0, rngCounter)) : null;
-  const jitter = (deltas: MetricDeltas | undefined): MetricDeltas | undefined => {
-    if (!rng || !deltas) return deltas;
+  const rng = mulberry32(mixSeed(inputState.seed ?? 0, rngCounter));
+  const jitter = (deltas: MetricDeltas | undefined, variance: number): MetricDeltas | undefined => {
+    if (variance <= 0 || !deltas) return deltas;
     const out: MetricDeltas = {};
     for (const key of METRIC_KEYS) {
       const value = deltas[key];
@@ -340,57 +403,59 @@ export function applyDecision(
     }
     return out;
   };
-  const immediate = jitter(option.immediate);
-  const delayed = jitter(option.delayed);
 
-  // 1. flush delayed effects from the previous round
+  // 1. flush delayed effects from the previous round (once)
   state.metrics = applyDeltas(state.metrics, state.pendingDelayed);
   const applied: MetricDeltas = { ...state.pendingDelayed };
   state.pendingDelayed = {};
+  state.budget -= totalCost;
 
-  // 3. cost + immediate effects
-  state.budget -= option.cost;
-  state.metrics = applyDeltas(state.metrics, immediate);
-  for (const [k, v] of Object.entries(immediate ?? {})) {
-    applied[k as keyof MetricDeltas] = (applied[k as keyof MetricDeltas] ?? 0) + (v as number);
-  }
-  state.score += option.scoreDelta ?? 0;
+  // 2-4. apply each chosen option
+  for (const option of chosen) {
+    const variance = normalizeVariance(option.variance);
+    const immediate = jitter(option.immediate, variance);
+    const delayed = jitter(option.delayed, variance);
 
-  // flags
-  for (const flag of option.grantsFlags ?? []) {
-    if (!state.flags.includes(flag)) state.flags.push(flag);
-  }
-  for (const flag of option.removesFlags ?? []) {
-    state.flags = state.flags.filter((f) => f !== flag);
-  }
-
-  // investigation cards reveal ambiguous signals and add clarity
-  if (option.kind === 'investigate') {
-    for (const sig of option.revealsSignals ?? []) {
-      if (!state.knowledge!.revealedSignals.includes(sig)) state.knowledge!.revealedSignals.push(sig);
+    state.metrics = applyDeltas(state.metrics, immediate);
+    for (const [k, v] of Object.entries(immediate ?? {})) {
+      applied[k as keyof MetricDeltas] = (applied[k as keyof MetricDeltas] ?? 0) + (v as number);
     }
-    const delta = option.clarityDelta ?? 0;
-    state.knowledge!.clarity = Math.max(0, Math.min(1, state.knowledge!.clarity + delta));
-  }
+    state.score += option.scoreDelta ?? 0;
 
-  // 4. queue delayed effects
-  if (delayed) {
-    for (const [k, v] of Object.entries(delayed)) {
-      const key = k as keyof MetricDeltas;
-      state.pendingDelayed[key] = (state.pendingDelayed[key] ?? 0) + (v as number);
+    for (const flag of option.grantsFlags ?? []) {
+      if (!state.flags.includes(flag)) state.flags.push(flag);
+    }
+    for (const flag of option.removesFlags ?? []) {
+      state.flags = state.flags.filter((f) => f !== flag);
+    }
+
+    if (option.kind === 'investigate') {
+      for (const sig of option.revealsSignals ?? []) {
+        if (!state.knowledge!.revealedSignals.includes(sig)) state.knowledge!.revealedSignals.push(sig);
+      }
+      const delta = option.clarityDelta ?? 0;
+      state.knowledge!.clarity = Math.max(0, Math.min(1, state.knowledge!.clarity + delta));
+    }
+
+    if (delayed) {
+      for (const [k, v] of Object.entries(delayed)) {
+        const key = k as keyof MetricDeltas;
+        state.pendingDelayed[key] = (state.pendingDelayed[key] ?? 0) + (v as number);
+      }
     }
   }
 
-  // record decision
+  // record the decision (one entry per round, with all chosen option ids)
   state.completedEventIds.push(event.id);
   state.decisions.push({
     eventId: event.id,
-    optionId: option.id,
+    optionId: chosen[0]!.id,
+    optionIds: chosen.map((c) => c.id),
     round: event.round,
-    cost: option.cost,
+    cost: totalCost,
   });
 
-  // 5. next event
+  // 5. advance the event once
   const nextEventId = resolveNextEventId(scenario, event, state);
   state.currentEventId = nextEventId;
   state.rngCounter = rngCounter + 1;
@@ -414,6 +479,15 @@ export function applyDecision(
     insightKey: event.insightKey,
     ended: !nextEventId,
   };
+}
+
+/** Single-option convenience wrapper around {@link applyDecisions}. */
+export function applyDecision(
+  scenario: Scenario,
+  inputState: GameStateData,
+  optionId: string,
+): DecisionResult {
+  return applyDecisions(scenario, inputState, [optionId]);
 }
 
 /** Determine the next event id given the (already updated) state. */

@@ -17,7 +17,7 @@ import {
   StatusPill,
   cn,
 } from '../components/ui';
-import type { OptionData, TeamWorkspaceData } from '../types';
+import type { OptionData, TeamReportData, TeamWorkspaceData } from '../types';
 
 export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>();
@@ -26,16 +26,21 @@ export function TeamWorkspacePage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<TeamWorkspaceData | null>(null);
-  const [selected, setSelected] = useState<string>('');
+  const [selected, setSelected] = useState<string[]>([]);
   const [rationale, setRationale] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [report, setReport] = useState<TeamReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!teamId) return;
     const res = await api.get<{ workspace: TeamWorkspaceData }>(`/teams/${teamId}`);
     setData(res.workspace);
-    if (res.workspace.submittedDecision) setSelected(res.workspace.submittedDecision.optionId);
+    if (res.workspace.submittedDecision) {
+      const sd = res.workspace.submittedDecision;
+      setSelected(sd.optionIds && sd.optionIds.length ? sd.optionIds : [sd.optionId]);
+    }
   }, [teamId]);
 
   useEffect(() => {
@@ -82,18 +87,42 @@ export function TeamWorkspacePage() {
           ? t('team.waitingStart')
           : t('team.deadlinePassed');
 
+  const selectedCost = data?.currentEvent
+    ? data.currentEvent.options.filter((o) => selected.includes(o.id)).reduce((acc, o) => acc + o.cost, 0)
+    : 0;
+  const overBudget = Boolean(data) && selectedCost > data!.state.budget;
+  const teamFinished = data?.state.status === 'ended';
+
   async function submitDecision() {
-    if (!teamId || !selected || !data) return;
+    if (!teamId || selected.length === 0 || !data) return;
     setError(null);
     setMessage(null);
     try {
-      await api.post(`/teams/${teamId}/decision`, { optionId: selected, rationale, expectedVersion: data.state.version });
+      await api.post(`/teams/${teamId}/decision`, { optionIds: selected, rationale, expectedVersion: data.state.version });
       setMessage(t('team.submitted'));
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('team.actionFailed'));
       if (err instanceof ApiError && err.code === 'STALE_STATE') await load();
     }
+  }
+
+  async function generateTeamReport() {
+    if (!teamId) return;
+    setReportLoading(true);
+    setError(null);
+    try {
+      const res = await api.get<{ report: TeamReportData }>(`/teams/${teamId}/report`);
+      setReport(res.report);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('team.actionFailed'));
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  function toggleOption(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   async function propose(optionId: string) {
@@ -143,6 +172,22 @@ export function TeamWorkspacePage() {
       {data.session.status === 'LOBBY' && <Banner kind="info">{t('team.waitingStart')}</Banner>}
       {data.session.status === 'PAUSED' && <Banner kind="info">{t('team.paused')}</Banner>}
       {deadlinePassed && !locked && <Banner kind="info">{t('team.deadlinePassed')}</Banner>}
+
+      {teamFinished && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">{t('team.reportTitle')}</p>
+              <p className="text-xs text-slate-500">{t('team.reportIntro')}</p>
+            </div>
+            <button className="btn-primary" disabled={reportLoading} onClick={() => void generateTeamReport()}>
+              {reportLoading ? t('common.loading') : t('team.generateReport')}
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {report && <TeamReportView report={report} onClose={() => setReport(null)} />}
 
       <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-5">
@@ -215,16 +260,22 @@ export function TeamWorkspacePage() {
 
           {event && (
             <div className="space-y-3">
-              <SectionTitle title={t('team.options')} subtitle={!canAct && !locked ? t('team.roundNotOpen') : undefined} />
+              <SectionTitle title={t('team.options')} subtitle={!canAct && !locked ? t('team.roundNotOpen') : t('team.selectMultiple')} />
               {event.options.map((opt) => (
                 <OptionCard
                   key={opt.id}
                   option={opt}
-                  selected={selected === opt.id}
-                  submitted={data.submittedDecision?.optionId === opt.id}
+                  selected={selected.includes(opt.id)}
+                  submitted={Boolean(
+                    data.submittedDecision &&
+                      (data.submittedDecision.optionIds?.length
+                        ? data.submittedDecision.optionIds
+                        : [data.submittedDecision.optionId]
+                      ).includes(opt.id),
+                  )}
                   disabled={!canAct}
                   disabledTitle={disabledReason}
-                  onSelect={() => setSelected(opt.id)}
+                  onSelect={() => toggleOption(opt.id)}
                   onPropose={() => void propose(opt.id)}
                 />
               ))}
@@ -241,18 +292,27 @@ export function TeamWorkspacePage() {
                 disabled={!canAct}
                 placeholder={data.submittedDecision?.rationale ?? ''}
               />
-              <div className="mt-3 flex items-center gap-3">
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <span className={cn('text-xs', overBudget ? 'text-accent' : 'text-slate-400')}>
+                  {t('team.totalCost')}: <span className="font-mono">{selectedCost}</span>
+                  {typeof data.state.budget === 'number' && ` / ${data.state.budget}`}
+                  {overBudget && ` · ${t('team.overBudget')}`}
+                </span>
                 <button
                   className="btn-primary"
-                  disabled={!canAct || !selected}
-                  title={!canAct ? disabledReason : undefined}
+                  disabled={!canAct || selected.length === 0 || overBudget}
+                  title={!canAct ? disabledReason : overBudget ? t('team.overBudget') : undefined}
                   onClick={() => void submitDecision()}
                 >
                   {data.submittedDecision ? `↻ ${t('team.submit')}` : t('team.submit')}
                 </button>
                 {data.submittedDecision && (
                   <span className="text-xs text-accent-emerald">
-                    ✔ {t('team.submitted')}: {data.submittedDecision.optionId}
+                    ✔ {t('team.submitted')}:{' '}
+                    {(data.submittedDecision.optionIds?.length
+                      ? data.submittedDecision.optionIds
+                      : [data.submittedDecision.optionId]
+                    ).join(', ')}
                   </span>
                 )}
               </div>
@@ -396,6 +456,9 @@ function OptionCard({
             {option.premium && (
               <span className="chip text-[10px] text-accent-amber">★ {t('team.premium')}</span>
             )}
+            {option.serviceCard && (
+              <span className="chip text-[10px] text-accent-cyan">🛡 {t('team.serviceCard')}</span>
+            )}
             {option.kind === 'investigate' && (
               <span className="chip text-[10px] text-accent-cyan">
                 🔍 {t('team.investigate')}
@@ -432,6 +495,188 @@ function OptionCard({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamReportView({ report, onClose }: { report: TeamReportData; onClose: () => void }) {
+  const { t } = useTranslation();
+  const { lt } = useLang();
+
+  const DocButtons = ({ docs }: { docs: { label: string; url: string }[] }) => (
+    <div className="mt-1 flex flex-wrap gap-2">
+      {docs.map((d) => (
+        <a
+          key={d.url}
+          href={d.url}
+          target="_blank"
+          rel="noreferrer"
+          className="chip text-[11px] text-accent-cyan hover:underline"
+        >
+          {d.label} ↗
+        </a>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-40 overflow-y-auto bg-base-900/80 p-4 print:static print:bg-white print:p-0">
+      <div className="mx-auto max-w-4xl space-y-4 rounded-xl bg-base-800 p-5 shadow-xl print:bg-white print:text-black">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white print:text-black">{t('team.reportTitle')}</h2>
+            <p className="text-xs text-slate-400">
+              {report.team.name} · {lt(report.scenario.name)} · {t('team.score')}: {report.team.score}
+            </p>
+          </div>
+          <div className="flex gap-2 print:hidden">
+            <button className="btn-ghost" onClick={() => window.print()}>{t('team.print')}</button>
+            <button className="btn-ghost" onClick={onClose}>{t('team.close')}</button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('team.score')}</p>
+            <p className="text-2xl font-mono text-white print:text-black">{report.team.score}</p>
+            <p className="text-xs text-slate-400">{t('team.maturity')}: {report.team.maturity}</p>
+          </Card>
+          <Card>
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('team.budgetRemaining')}</p>
+            <p className="text-2xl font-mono text-white print:text-black">{report.budget.remaining}</p>
+            <p className="text-xs text-slate-400">
+              {t('team.budgetStart')}: {report.budget.start} · {t('team.budgetSpent')}: {report.budget.spent}
+            </p>
+          </Card>
+          <Card>
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('team.clarityFinal')}</p>
+            <p className="text-2xl font-mono text-white print:text-black">{Math.round(report.clarity * 100)}%</p>
+            <p className="text-xs text-slate-400">{report.fundedControls.length} {t('team.controlsFunded')}</p>
+          </Card>
+        </div>
+
+        <Card>
+          <SectionTitle title={t('team.strengths')} />
+          {report.strengths.length === 0 ? (
+            <p className="text-xs text-slate-500">—</p>
+          ) : (
+            <ul className="space-y-2">
+              {report.strengths.map((s, i) => (
+                <li key={i} className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+                  <p className="text-sm text-emerald-200">✅ {lt(s.label)}</p>
+                  {s.detail && <p className="text-xs text-slate-400">{lt(s.detail)}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle title={t('team.weaknesses')} />
+          {report.weaknesses.length === 0 ? (
+            <p className="text-xs text-slate-500">—</p>
+          ) : (
+            <ul className="space-y-2">
+              {report.weaknesses.map((w, i) => (
+                <li key={i} className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                  <p className="text-sm text-amber-200">⚠ {lt(w.label)}</p>
+                  {w.detail && <p className="text-xs text-slate-400">{lt(w.detail)}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle title={t('team.architectureGaps')} />
+          {report.architecture.gaps.length > 0 && (
+            <ul className="mb-3 space-y-2">
+              {report.architecture.gaps.map((g) => (
+                <li key={g.control} className="rounded-lg border border-base-700 p-2">
+                  <p className="text-sm text-slate-200">
+                    {g.control} <span className="text-xs text-slate-500">({g.zone})</span>
+                  </p>
+                  {g.businessProblem && <p className="text-xs text-slate-400">{lt(g.businessProblem)}</p>}
+                  <DocButtons docs={g.docs} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{t('team.coveredControls')}</p>
+          <div className="flex flex-wrap gap-2">
+            {report.architecture.services.map((svc) => (
+              <span
+                key={svc.service}
+                className={cn('chip text-[11px]', svc.funded ? 'text-accent-emerald' : 'text-slate-500')}
+              >
+                {svc.funded ? '✓ ' : '· '}
+                {svc.service}
+              </span>
+            ))}
+          </div>
+          <p className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{t('team.huaweiDocs')}</p>
+          <div className="flex flex-wrap gap-2">
+            {report.architecture.services
+              .filter((s) => s.docs.length > 0)
+              .map((s) => (
+                <a
+                  key={s.service}
+                  href={s.docs[0]!.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="chip text-[11px] text-accent-cyan hover:underline"
+                >
+                  {s.service} ↗
+                </a>
+              ))}
+          </div>
+        </Card>
+
+        <Card>
+          <SectionTitle title={t('team.decisions')} />
+          {report.decisions.length === 0 ? (
+            <p className="text-xs text-slate-500">—</p>
+          ) : (
+            <ol className="space-y-2">
+              {report.decisions.map((d, i) => (
+                <li key={i} className="rounded-lg border border-base-700 p-2">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                    {t('team.round')} {d.round} · {d.eventTitle ? lt(d.eventTitle) : d.eventId}
+                  </p>
+                  {d.noResponse ? (
+                    <p className="text-xs text-amber-200">{t('team.noResponse')}</p>
+                  ) : (
+                    <p className="text-xs text-slate-300">{d.optionLabels.filter(Boolean).map((l) => lt(l!)).join(' · ')}</p>
+                  )}
+                  <p className="text-[11px] text-slate-500">
+                    {t('team.cost')}: {d.cost} · {t('team.score')}: {d.scoreDelta > 0 ? '+' : ''}{d.scoreDelta}
+                    {d.controls.length > 0 && ` · ${d.controls.join(', ')}`}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle title={t('team.lessons')} />
+          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-300">
+            {report.lessons.map((l, i) => (
+              <li key={i}>{lt(l)}</li>
+            ))}
+          </ul>
+          <p className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{t('team.correctReasoning')}</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-300">
+            {report.correctReasoning.map((l, i) => (
+              <li key={i}>{lt(l)}</li>
+            ))}
+          </ul>
+        </Card>
+
+        <p className="rounded-lg border border-base-700 bg-base-900/40 p-3 text-[11px] text-slate-500">
+          {lt(report.disclaimer)}
+        </p>
       </div>
     </div>
   );

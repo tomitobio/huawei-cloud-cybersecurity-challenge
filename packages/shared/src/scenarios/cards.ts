@@ -120,6 +120,116 @@ const FIXED_CARDS: DecisionOption[] = [
   },
 ];
 
+/**
+ * Fixed "Huawei service" cards — one per security service. These are injected
+ * into a round's hand when `deck.serviceFixed` is enabled (matching the event's
+ * `controlsInPlay`), so every round has a service card for the incident in play.
+ * They use `premiumOnFocus` (cost grows with focus) and their cost also scales
+ * with the event's `incidentSeverity` (handled in the engine).
+ */
+const SERVICE_FIXED_CARDS: DecisionOption[] = [
+  {
+    id: 'svc-hss',
+    label: { es: 'Usar HSS para visibilidad y respuesta en el host', en: 'Use HSS for host visibility and response' },
+    description: {
+      es: 'Aprovechar la protección de host para investigar proceso, archivos y aislamiento.',
+      en: 'Leverage host protection to investigate process, files and isolation.',
+    },
+    cost: 9,
+    controls: ['HSS'],
+    tags: ['host', 'ransomware', 'ops'],
+    kind: 'investigate',
+    revealsSignals: ['sig-host'],
+    clarityDelta: 0.1,
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 6,
+    immediate: { riskReduction: 5, responseQuality: 3 },
+  },
+  {
+    id: 'svc-cfw',
+    label: { es: 'Usar CFW para segmentar y bloquear tráfico', en: 'Use CFW to segment and block traffic' },
+    description: {
+      es: 'Aplicar políticas de red para frenar propagación lateral y conexiones salientes.',
+      en: 'Apply network policies to stop lateral spread and outbound connections.',
+    },
+    cost: 9,
+    controls: ['CFW'],
+    tags: ['network', 'ransomware', 'lateral'],
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 6,
+    immediate: { riskReduction: 5, continuity: -1 },
+  },
+  {
+    id: 'svc-waf',
+    label: { es: 'Usar WAF para proteger la aplicación web', en: 'Use WAF to protect the web application' },
+    description: {
+      es: 'Inspeccionar y filtrar tráfico web malicioso contra la aplicación pública.',
+      en: 'Inspect and filter malicious web traffic against the public application.',
+    },
+    cost: 8,
+    controls: ['WAF'],
+    tags: ['web', 'web_tampering'],
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 5,
+    immediate: { riskReduction: 4, customerTrust: 2 },
+  },
+  {
+    id: 'svc-dew',
+    label: { es: 'Usar DEW para cifrar datos y gestionar claves', en: 'Use DEW to encrypt data and manage keys' },
+    description: {
+      es: 'Cifrar datos sensibles y controlar claves y secretos comprometidos.',
+      en: 'Encrypt sensitive data and control compromised keys and secrets.',
+    },
+    cost: 8,
+    controls: ['DEW'],
+    tags: ['data', 'encryption', 'credential'],
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 5,
+    immediate: { riskReduction: 4, governance: 3 },
+  },
+  {
+    id: 'svc-cbh',
+    label: { es: 'Usar CBH para controlar accesos privilegiados', en: 'Use CBH to control privileged access' },
+    description: {
+      es: 'Auditar y restringir sesiones administrativas y revocar accesos indebidos.',
+      en: 'Audit and restrict admin sessions and revoke improper access.',
+    },
+    cost: 8,
+    controls: ['CBH'],
+    tags: ['privileged', 'identity', 'credential'],
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 5,
+    immediate: { governance: 4, riskReduction: 3 },
+  },
+  {
+    id: 'svc-secmaster',
+    label: { es: 'Usar SecMaster para correlacionar y responder', en: 'Use SecMaster to correlate and respond' },
+    description: {
+      es: 'Consolidar alertas y coordinar la respuesta con una vista priorizada.',
+      en: 'Consolidate alerts and coordinate response with a prioritized view.',
+    },
+    cost: 8,
+    controls: ['SecMaster'],
+    tags: ['ops', 'correlation', 'recovery'],
+    premiumOnFocus: true,
+    serviceCard: true,
+    scoreDelta: 5,
+    immediate: { responseQuality: 5, governance: 2 },
+  },
+];
+
+/** Map control id -> its service fixed card id, used to inject per-round service cards. */
+export const SERVICE_CARD_BY_CONTROL: Record<string, string> = Object.fromEntries(
+  SERVICE_FIXED_CARDS.flatMap((c) => c.controls.map((ctrl) => [ctrl, c.id])),
+);
+
+export const SERVICE_FIXED_IDS = SERVICE_FIXED_CARDS.map((c) => c.id);
+
 const POOL_CARDS: DecisionOption[] = [
   // --- WEB / WAF -----------------------------------------------------------
   {
@@ -715,7 +825,7 @@ const POOL_CARDS: DecisionOption[] = [
 
 /** All cards indexed by id. */
 export const CARD_LIBRARY: Record<string, DecisionOption> = Object.fromEntries(
-  [...FIXED_CARDS, ...POOL_CARDS].map((card) => [card.id, card]),
+  [...FIXED_CARDS, ...SERVICE_FIXED_CARDS, ...POOL_CARDS].map((card) => [card.id, card]),
 );
 
 export const POOL_CARD_IDS = POOL_CARDS.map((c) => c.id);
@@ -725,9 +835,9 @@ export function pickCards(ids: readonly string[]): DecisionOption[] {
   return ids.map((id) => CARD_LIBRARY[id]).filter((c): c is DecisionOption => Boolean(c));
 }
 
-/** Full set of cards used by a standard deck scenario (fixed + full pool). */
+/** Full set of cards used by a standard deck scenario (fixed + service + full pool). */
 export function standardCards(): DecisionOption[] {
-  return pickCards([...FIXED_CARD_IDS, ...POOL_CARD_IDS]);
+  return pickCards([...FIXED_CARD_IDS, ...SERVICE_FIXED_IDS, ...POOL_CARD_IDS]);
 }
 
 /** Ready-to-spread standard deck configuration (5 drawn cards per round). */
@@ -735,4 +845,5 @@ export const STANDARD_DECK = {
   fixed: [...FIXED_CARD_IDS] as string[],
   pool: [...POOL_CARD_IDS] as string[],
   drawCount: 5,
+  serviceFixed: true,
 };

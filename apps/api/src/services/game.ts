@@ -3,6 +3,7 @@ import { ApiError } from '../lib/http';
 import { emitToSession, emitToTeam } from '../socket';
 import {
   applyDecision,
+  applyDecisions,
   applyDeltas,
   availableOptions,
   conditionMet,
@@ -15,6 +16,7 @@ import {
   normalizeWeights,
   prepareActiveEvent,
   resolveNextEventId,
+  selectionProblem,
   type DecisionOption,
   type GameStateData,
   type Scenario,
@@ -349,7 +351,13 @@ export async function getTeamWorkspace(teamId: string) {
         }
       : null,
     submittedDecision: submitted
-      ? { optionId: submitted.optionId, rationale: submitted.rationale, cost: submitted.cost, createdAt: submitted.createdAt }
+      ? {
+          optionId: submitted.optionId,
+          optionIds: submitted.optionIds?.length ? submitted.optionIds : [submitted.optionId],
+          rationale: submitted.rationale,
+          cost: submitted.cost,
+          createdAt: submitted.createdAt,
+        }
       : null,
     proposals,
     timeline,
@@ -361,7 +369,7 @@ export async function getTeamWorkspace(teamId: string) {
 export async function submitDecision(
   teamId: string,
   userId: string,
-  input: { optionId: string; rationale?: string; expectedVersion: number },
+  input: { optionId?: string; optionIds?: string[]; rationale?: string; expectedVersion: number },
 ) {
   const team = await prisma.team.findUnique({ where: { id: teamId }, include: { session: true } });
   if (!team) throw ApiError.notFound('Team not found');
@@ -378,25 +386,46 @@ export async function submitDecision(
 
   const scenario = await loadScenarioForSession(team.sessionId);
   const event = getEvent(scenario, state.currentEventId);
-  const option = availableOptions(scenario, event, state).find((o) => o.id === input.optionId);
-  if (!option) throw ApiError.badRequest('This option is not available for the current state');
+
+  const ids = [...new Set(
+    (input.optionIds && input.optionIds.length ? input.optionIds : input.optionId ? [input.optionId] : []).filter(Boolean),
+  )];
+  if (ids.length === 0) throw ApiError.badRequest('Select at least one option');
+  const problem = selectionProblem(scenario, event, state, ids);
+  if (problem === 'OPTION_NOT_FOUND' || problem === 'NO_OPTION') {
+    throw ApiError.badRequest('This option is not available for the current state');
+  }
+  if (problem === 'REQUIREMENT_NOT_MET') throw ApiError.badRequest('Option requirements are not satisfied');
+  if (problem === 'INSUFFICIENT_BUDGET') throw ApiError.badRequest('The combined cost exceeds the remaining budget');
+
+  const cards = getEventCards(scenario, event, state);
+  const chosen = ids.map((id) => cards.find((o) => o.id === id)!);
+  const totalCost = chosen.reduce((acc, c) => acc + c.cost, 0);
 
   const decision = await prisma.submittedDecision.upsert({
     where: { teamId_eventId: { teamId, eventId: state.currentEventId } },
-    update: { optionId: option.id, rationale: input.rationale ?? '', cost: option.cost, submittedById: userId, round: event.round },
+    update: {
+      optionId: chosen[0]!.id,
+      optionIds: ids,
+      rationale: input.rationale ?? '',
+      cost: totalCost,
+      submittedById: userId,
+      round: event.round,
+    },
     create: {
       teamId,
       eventId: state.currentEventId,
-      optionId: option.id,
+      optionId: chosen[0]!.id,
+      optionIds: ids,
       rationale: input.rationale ?? '',
-      cost: option.cost,
+      cost: totalCost,
       round: event.round,
       submittedById: userId,
     },
   });
 
   await prisma.eventHistory.create({
-    data: { teamId, type: 'decision_submitted', eventId: state.currentEventId, payload: { optionId: option.id } as object },
+    data: { teamId, type: 'decision_submitted', eventId: state.currentEventId, payload: { optionId: chosen[0]!.id, optionIds: ids } as object },
   });
 
   emitResolved(team.sessionId, teamId, 'decisionSubmitted', { teamId, eventId: state.currentEventId });
@@ -525,7 +554,8 @@ export async function resolveRound(sessionId: string, actorId: string, options: 
     let reason: string;
 
     if (submission) {
-      const result = applyDecision(scenario, current, submission.optionId);
+      const optionIds = submission.optionIds?.length ? submission.optionIds : [submission.optionId];
+      const result = applyDecisions(scenario, current, optionIds);
       nextState = result.state;
       appliedDeltas = result.appliedDeltas as Record<string, number>;
       reason = 'decision';
@@ -536,7 +566,7 @@ export async function resolveRound(sessionId: string, actorId: string, options: 
       ns.pendingDelayed = {};
       ns.metrics = applyDeltas(ns.metrics, NO_RESPONSE_PENALTY);
       ns.completedEventIds.push(event.id);
-      ns.decisions.push({ eventId: event.id, optionId: '__no_response__', round: event.round, cost: 0 });
+      ns.decisions.push({ eventId: event.id, optionId: '__no_response__', optionIds: ['__no_response__'], round: event.round, cost: 0 });
       const next = resolveNextEventId(scenario, event, ns);
       ns.currentEventId = next;
       ns.version += 1;
@@ -573,7 +603,12 @@ export async function resolveRound(sessionId: string, actorId: string, options: 
         teamId: team.id,
         type: 'resolved',
         eventId: event.id,
-        payload: { reason, optionId: submission?.optionId ?? null, nextEventId: nextState.currentEventId } as object,
+        payload: {
+          reason,
+          optionId: submission?.optionId ?? null,
+          optionIds: submission ? (submission.optionIds?.length ? submission.optionIds : [submission.optionId]) : [],
+          nextEventId: nextState.currentEventId,
+        } as object,
       },
     });
     results.push({ teamId: team.id, next: nextState.currentEventId, score: finalScoreFor(scenario, nextState) });

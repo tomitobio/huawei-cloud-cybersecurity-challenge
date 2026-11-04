@@ -137,6 +137,7 @@ export interface OptionData {
   kind?: 'action' | 'investigate';
   premium?: boolean;
   premiumOnFocus?: boolean;
+  serviceCard?: boolean;
   revealsSignals?: string[];
   clarityDelta?: number;
   available: boolean;
@@ -197,9 +198,48 @@ export interface TeamWorkspaceData {
     hypotheses?: LocalizedText[];
     clarity?: number;
   } | null;
-  submittedDecision: { optionId: string; rationale: string; cost: number; createdAt: string } | null;
+  submittedDecision: { optionId: string; optionIds?: string[]; rationale: string; cost: number; createdAt: string } | null;
   proposals: ProposalData[];
   timeline: { id: string; round: number; title: LocalizedText; phase: LocalizedText; narrative: LocalizedText }[];
   leaderboard: LeaderboardRowData[];
   members: { id: string; displayName: string; role: string }[];
+}
+
+/** Self-service team report (own data only). */
+export interface TeamReportItem {
+  kind: string;
+  label: LocalizedText;
+  detail?: LocalizedText;
+}
+
+export interface TeamReportData {
+  generatedAt: string;
+  team: { id: string; name: string; color: string; maturity: string; score: number; status: string };
+  scenario: { key: string; name: LocalizedText; summary: LocalizedText };
+  metrics: { key: string; label: LocalizedText; value: number; baseline: number; weight: number; delta: number }[];
+  budget: { start: number; spent: number; remaining: number };
+  clarity: number;
+  fundedControls: string[];
+  decisions: {
+    round: number;
+    eventId: string;
+    eventTitle?: LocalizedText;
+    optionIds: string[];
+    optionLabels: (LocalizedText | undefined)[];
+    controls: ControlId[];
+    cost: number;
+    scoreDelta: number;
+    noResponse: boolean;
+    rationale: string;
+  }[];
+  strengths: TeamReportItem[];
+  weaknesses: TeamReportItem[];
+  architecture: {
+    gaps: { control: string; zone: string; docs: { label: string; url: string }[]; domain?: LocalizedText; businessProblem?: LocalizedText }[];
+    covered: { control: string; docs: { label: string; url: string }[]; domain?: LocalizedText }[];
+    services: { service: string; funded: boolean; domain?: LocalizedText; docs: { label: string; url: string }[] }[];
+  };
+  lessons: LocalizedText[];
+  correctReasoning: LocalizedText[];
+  disclaimer: LocalizedText;
 }

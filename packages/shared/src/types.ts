@@ -112,6 +112,12 @@ export interface DecisionOption {
   clarityDelta?: number;
   /** Set by the engine at runtime when focus premium pricing is applied. */
   premium?: boolean;
+  /**
+   * Marks a "Huawei service" fixed card (HSS/CFW/WAF/DEW/CBH/SecMaster). Service
+   * cards are always present in the round's hand when `deck.serviceFixed` is on,
+   * and their cost scales with the event's `incidentSeverity`.
+   */
+  serviceCard?: boolean;
 }
 
 /** An ambiguous signal shown to teams; `truth` is only revealed after investigation. */
@@ -137,6 +143,13 @@ export interface DeckConfig {
   pool: string[];
   /** How many pool cards to draw per round. */
   drawCount: number;
+  /**
+   * When true, the round's hand also injects the Huawei service fixed cards that
+   * match the event's `controlsInPlay` (always present, cost scaled by severity).
+   */
+  serviceFixed?: boolean;
+  /** Per-scenario draw-weight overrides keyed by card id (falls back to baseWeight). */
+  weights?: Record<string, number>;
 }
 
 /** Scenario economy: per-round income and focus-premium multipliers. */
@@ -162,6 +175,12 @@ export interface ScenarioEvent {
   options?: DecisionOption[];
   /** Focus tags that weight the card draw for this event. */
   focusTags?: string[];
+  /**
+   * Incident severity multiplier (>=1) applied to the cost of Huawei service
+   * fixed cards. When omitted, it is derived from the round (later rounds are
+   * treated as more severe). Higher = service cards cost more this round.
+   */
+  incidentSeverity?: number;
   /** Per-event override of the deck hand / income. */
   hand?: HandConfig;
   /** Ambiguous signals (some are red herrings). `truth` is engine-only. */
@@ -228,7 +247,10 @@ export interface Scenario {
 /** A recorded decision for a single event. */
 export interface RecordedDecision {
   eventId: string;
+  /** Primary/first chosen option (kept for backward compatibility). */
   optionId: string;
+  /** All options chosen this round (multi-select). Defaults to [optionId]. */
+  optionIds?: string[];
   round: number;
   cost: number;
 }

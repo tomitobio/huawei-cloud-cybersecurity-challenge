@@ -209,6 +209,55 @@ describe('API authorization and gameplay', () => {
     expect(actions).toContain('round.released');
     expect(actions).toContain('round.resolved');
   });
+
+  it('team report returns 409 while the team has not finished all rounds', async () => {
+    const res = await outsider.get(`/api/teams/${teamBId}/report`);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NOT_FINISHED');
+  });
+
+  it('a team cannot read another team report (403)', async () => {
+    const res = await outsider.get(`/api/teams/${teamAId}/report`);
+    expect(res.status).toBe(403);
+  });
+
+  it('multi-select records all chosen options and sums their cost', async () => {
+    const ws = await outsider.get(`/api/teams/${teamBId}`);
+    const w = ws.body.workspace;
+    const avail = (w.currentEvent.options as { id: string; available: boolean; cost: number }[]).filter((o) => o.available);
+    const pick = avail.slice(0, 2);
+    const expectedCost = pick.reduce((acc, o) => acc + o.cost, 0);
+    const res = await outsider
+      .post(`/api/teams/${teamBId}/decision`)
+      .send({ optionIds: pick.map((o) => o.id), rationale: 'combined', expectedVersion: w.state.version });
+    expect(res.status).toBe(200);
+    expect(res.body.decision.optionIds).toHaveLength(2);
+    const after = await outsider.get(`/api/teams/${teamBId}`);
+    expect(after.body.workspace.submittedDecision.optionIds).toHaveLength(2);
+    expect(after.body.workspace.submittedDecision.cost).toBe(expectedCost);
+  });
+
+  it('finishes a team and serves its own report (200, isolated)', async () => {
+    // Drive team A through all rounds with a valid single pick each round.
+    for (let i = 0; i < 10; i += 1) {
+      const ws = await captain.get(`/api/teams/${teamAId}`);
+      const w = ws.body.workspace;
+      if (w.state.status === 'ended') break;
+      const avail = (w.currentEvent.options as { id: string; available: boolean }[]).filter((o) => o.available);
+      await captain
+        .post(`/api/teams/${teamAId}/decision`)
+        .send({ optionIds: [avail[0]!.id], expectedVersion: w.state.version });
+      await instructor.post(`/api/sessions/${sessionId}/resolve`).send({ force: true });
+    }
+    const res = await captain.get(`/api/teams/${teamAId}/report`);
+    expect(res.status).toBe(200);
+    expect(res.body.report.team.id).toBe(teamAId);
+    expect(res.body.report.decisions.length).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.report.strengths)).toBe(true);
+    expect(Array.isArray(res.body.report.weaknesses)).toBe(true);
+    // Isolation: no other team's name leaks into this team's report.
+    expect(JSON.stringify(res.body.report)).not.toContain('Team B');
+  });
 });
 
 describe('scenario editor', () => {

@@ -4,6 +4,7 @@ import { ApiError, asyncHandler } from '../lib/http';
 import { decisionSubmissionSchema } from '@hcc/shared';
 import { requireAuth, type AuthedRequest } from '../middleware/auth';
 import { castVote, createProposal, getTeamWorkspace, submitDecision } from '../services/game';
+import { buildTeamReport } from '../services/report';
 
 export const teamRouter = Router();
 teamRouter.use('/teams', requireAuth);
@@ -37,7 +38,16 @@ teamRouter.post(
     const team = await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id);
     const input = decisionSubmissionSchema.parse(req.body);
     const decision = await submitDecision(team.id, req.user!.sub, input);
-    res.json({ decision: { eventId: decision.eventId, optionId: decision.optionId } });
+    res.json({ decision: { eventId: decision.eventId, optionId: decision.optionId, optionIds: decision.optionIds } });
+  }),
+);
+
+teamRouter.get(
+  '/teams/:id/report',
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const team = await assertTeamAccess(req.user!.sub, req.user!.role, req.params.id);
+    const report = await buildTeamReport(team.id);
+    res.json({ report });
   }),
 );
 

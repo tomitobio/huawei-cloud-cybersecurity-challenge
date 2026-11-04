@@ -120,6 +120,7 @@ model SubmittedDecision {
   team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   eventId       String
   optionId      String
+  optionIds     String[] @default([])
   rationale     String   @default("")
   cost          Float    @default(0)
   round         Int      @default(0)
