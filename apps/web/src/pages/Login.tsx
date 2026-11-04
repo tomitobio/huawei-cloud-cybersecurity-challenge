@@ -31,7 +31,7 @@ export function LoginPage() {
   async function demo(kind: 'instructor' | 'admin') {
     const creds =
       kind === 'admin'
-        ? { email: 'admin@hcc.local', password: 'Admin123!' }
+        ? { email: 'admin@hcc.local', password: 'Hcc-d25kuoAyPLMz1JVW0VoN!' }
         : { email: 'instructor@hcc.local', password: 'Instructor123!' };
     setBusy(true);
     setError(null);
