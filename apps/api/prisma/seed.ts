@@ -5,11 +5,9 @@ import { ensureScenario, createSession } from '../src/services/game';
 import { CARD_LIBRARY } from '@hcc/shared';
 
 async function main() {
-  // Fictional demo accounts. Change these before any real use.
-  // Passwords can be rotated via env (recommended for any real deployment):
-  //   SEED_ADMIN_PASSWORD / SEED_INSTRUCTOR_PASSWORD
+  // Fictional demo account. Change the password before any real use.
+  // Password can be rotated via env: SEED_ADMIN_PASSWORD
   const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Hcc-d25kuoAyPLMz1JVW0VoN!';
-  const instructorPassword = process.env.SEED_INSTRUCTOR_PASSWORD ?? 'Instructor123!';
   const admin = await prisma.user.upsert({
     where: { email: 'admin@hcc.local' },
     update: { passwordHash: await hashPassword(adminPassword) },
@@ -18,17 +16,6 @@ async function main() {
       displayName: 'Platform Admin',
       role: 'ADMIN',
       passwordHash: await hashPassword(adminPassword),
-    },
-  });
-
-  const instructor = await prisma.user.upsert({
-    where: { email: 'instructor@hcc.local' },
-    update: { passwordHash: await hashPassword(instructorPassword) },
-    create: {
-      email: 'instructor@hcc.local',
-      displayName: 'Instructor Demo',
-      role: 'INSTRUCTOR',
-      passwordHash: await hashPassword(instructorPassword),
     },
   });
 
@@ -64,11 +51,11 @@ async function main() {
   console.log(`[seed] Card library: ${Object.keys(CARD_LIBRARY).length} cards`);
 
   const existing = await prisma.workshopSession.findFirst({
-    where: { instructorId: instructor.id, name: 'Demo — Ransomware Workshop' },
+    where: { instructorId: admin.id, name: 'Demo — Ransomware Workshop' },
   });
 
   if (!existing) {
-    const session = await createSession(instructor.id, {
+    const session = await createSession(admin.id, {
       name: 'Demo — Ransomware Workshop',
       scenarioKey: 'ransomware-retail',
       teams: [
@@ -92,8 +79,6 @@ async function main() {
   console.log('[seed] Accounts:');
   // eslint-disable-next-line no-console
   console.log(`  admin@hcc.local / ${adminPassword} (${admin.role})`);
-  // eslint-disable-next-line no-console
-  console.log(`  instructor@hcc.local / ${instructorPassword} (${instructor.role})`);
 }
 
 main()

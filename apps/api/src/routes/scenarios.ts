@@ -123,7 +123,7 @@ scenarioRouter.post(
 // Create or replace a custom scenario.
 scenarioRouter.post(
   '/scenarios',
-  requireRole('ADMIN', 'INSTRUCTOR'),
+  requireRole('ADMIN'),
   asyncHandler<AuthedRequest>(async (req, res) => {
     const { scenario, isActive } = saveScenarioSchema.parse(req.body);
     const row = await saveCustomScenario(await embedScenarioCards(scenario as Scenario), isActive ?? true);
@@ -135,7 +135,7 @@ scenarioRouter.post(
 // Update a custom scenario definition by key.
 scenarioRouter.put(
   '/scenarios/:key',
-  requireRole('ADMIN', 'INSTRUCTOR'),
+  requireRole('ADMIN'),
   asyncHandler<AuthedRequest>(async (req, res) => {
     const { scenario, isActive } = saveScenarioSchema.parse(req.body);
     if (scenario.key !== req.params.key) {
@@ -151,7 +151,7 @@ scenarioRouter.put(
 // Toggle a custom scenario's active flag.
 scenarioRouter.post(
   '/scenarios/:key/active',
-  requireRole('ADMIN', 'INSTRUCTOR'),
+  requireRole('ADMIN'),
   asyncHandler<AuthedRequest>(async (req, res) => {
     const isActive = Boolean(req.body?.isActive);
     const row = await setScenarioActive(req.params.key, isActive);
@@ -163,7 +163,7 @@ scenarioRouter.post(
 // Delete a custom scenario (blocked when sessions reference it).
 scenarioRouter.delete(
   '/scenarios/:key',
-  requireRole('ADMIN', 'INSTRUCTOR'),
+  requireRole('ADMIN'),
   asyncHandler<AuthedRequest>(async (req, res) => {
     await deleteCustomScenario(req.params.key);
     await audit(null, req.user!.sub, 'scenario.deleted', { key: req.params.key });

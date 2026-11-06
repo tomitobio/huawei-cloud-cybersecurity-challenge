@@ -41,7 +41,7 @@ authRouter.post(
       throw ApiError.forbidden('Only administrators can register new users');
     }
     const input = registerSchema.parse(req.body);
-    const role = isBootstrap ? 'ADMIN' : input.role;
+    const role = 'ADMIN';
     const exists = await prisma.user.findUnique({ where: { email: input.email } });
     if (exists) throw ApiError.conflict('Email already registered');
     const user = await prisma.user.create({

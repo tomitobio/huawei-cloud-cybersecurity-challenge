@@ -172,7 +172,6 @@ export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   displayName: z.string().min(1).max(80),
-  role: z.enum(['ADMIN', 'INSTRUCTOR']).default('INSTRUCTOR'),
 });
 
 export const createSessionSchema = z.object({

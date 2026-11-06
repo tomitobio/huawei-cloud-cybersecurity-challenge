@@ -29,8 +29,8 @@ beforeAll(async () => {
   await prisma.user.create({
     data: {
       email: instructorEmail,
-      displayName: 'Test Instructor',
-      role: 'INSTRUCTOR',
+      displayName: 'Test Facilitator',
+      role: 'ADMIN',
       passwordHash: await hashPassword('Password123!'),
     },
   });
@@ -61,10 +61,10 @@ describe('API authorization and gameplay', () => {
     expect(res.status).toBe(401);
   });
 
-  it('instructor logs in', async () => {
+  it('facilitator logs in (single staff ADMIN role)', async () => {
     const res = await instructor.post('/api/auth/login').send({ email: instructorEmail, password: 'Password123!' });
     expect(res.status).toBe(200);
-    expect(res.body.user.role).toBe('INSTRUCTOR');
+    expect(res.body.user.role).toBe('ADMIN');
   });
 
   it('instructor creates a session with two teams', async () => {
@@ -386,7 +386,7 @@ describe('session deletion', () => {
     expect(res.status).toBe(401);
   });
 
-  it('a non-instructor cannot delete a session', async () => {
+  it('a non-admin cannot delete a session', async () => {
     const res = await captain.del(`/api/sessions/${deleteSessionId}`);
     expect(res.status).toBe(403);
   });
@@ -406,13 +406,13 @@ describe('session deletion', () => {
     expect(res.status).toBe(404);
   });
 
-  it('card library: instructors can read but not write', async () => {
-    const read = await instructor.get('/api/cards');
+  it('card library: members can read but not write', async () => {
+    const read = await outsider.get('/api/cards');
     expect(read.status).toBe(200);
     expect(Array.isArray(read.body.cards)).toBe(true);
     expect(read.body.cards.length).toBeGreaterThan(0);
 
-    const write = await instructor.post('/api/cards').send({
+    const write = await outsider.post('/api/cards').send({
       cardKey: `t-forbidden-${stamp}`,
       label: { es: 'X', en: 'X' },
       description: { es: 'X', en: 'X' },

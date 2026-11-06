@@ -38,7 +38,7 @@ function LangToggle() {
 function Header() {
   const { user, logout } = useAuth();
   const { t } = useTranslation();
-  const isStaff = user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR';
+  const isStaff = user?.role === 'ADMIN';
   return (
     <header className="border-b border-base-700 bg-base-900/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
@@ -102,7 +102,7 @@ function navCls(isActive: boolean) {
 function RequireStaff({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   if (loading) return <Centered>Loading…</Centered>;
-  if (!user || (user.role !== 'ADMIN' && user.role !== 'INSTRUCTOR')) return <Navigate to="/login" replace />;
+  if (!user || user.role !== 'ADMIN') return <Navigate to="/login" replace />;
   return children;
 }
 
@@ -113,7 +113,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 function Home() {
   const { user, loading } = useAuth();
   if (loading) return <Centered>Loading…</Centered>;
-  if (user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR') return <Navigate to="/sessions" replace />;
+  if (user?.role === 'ADMIN') return <Navigate to="/sessions" replace />;
   const teamId = localStorage.getItem('hcc_teamId');
   if (user?.role === 'MEMBER' && teamId) return <Navigate to={`/team/${teamId}`} replace />;
   return <Navigate to="/join" replace />;

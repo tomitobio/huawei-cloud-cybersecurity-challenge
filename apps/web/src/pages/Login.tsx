@@ -28,11 +28,8 @@ export function LoginPage() {
     }
   }
 
-  async function demo(kind: 'instructor' | 'admin') {
-    const creds =
-      kind === 'admin'
-        ? { email: 'admin@hcc.local', password: 'Hcc-d25kuoAyPLMz1JVW0VoN!' }
-        : { email: 'instructor@hcc.local', password: 'Instructor123!' };
+  async function demo() {
+    const creds = { email: 'admin@hcc.local', password: 'Hcc-d25kuoAyPLMz1JVW0VoN!' };
     setBusy(true);
     setError(null);
     try {
@@ -68,10 +65,7 @@ export function LoginPage() {
         <div className="mt-6 border-t border-base-700 pt-4">
           <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">{t('login.demo')}</p>
           <div className="flex gap-2">
-            <button className="btn-ghost flex-1 text-xs" onClick={() => void demo('instructor')} disabled={busy}>
-              {t('login.demoInstructor')}
-            </button>
-            <button className="btn-ghost flex-1 text-xs" onClick={() => void demo('admin')} disabled={busy}>
+            <button className="btn-ghost flex-1 text-xs" onClick={() => void demo()} disabled={busy}>
               {t('login.demoAdmin')}
             </button>
           </div>
