@@ -288,7 +288,6 @@ export function CardLibraryPage() {
                     <tr>
                       <th className="py-1 pr-3">{t('cards.colKey')}</th>
                       <th className="py-1 pr-3">{t('cards.colLabel')}</th>
-                      <th className="py-1 pr-3">{t('cards.colCost')}</th>
                       <th className="py-1 pr-3">{t('cards.colControls')}</th>
                       <th className="py-1 pr-3">{t('cards.colKind')}</th>
                       <th className="py-1 pr-3">{t('cards.colWeight')}</th>
@@ -304,7 +303,6 @@ export function CardLibraryPage() {
                           <div className="text-slate-100">{c.label ? lt(c.label) : '—'}</div>
                           <div className="text-[11px] text-slate-500">{c.description ? lt(c.description) : ''}</div>
                         </td>
-                        <td className="py-2 pr-3 font-mono">{c.cost}</td>
                         <td className="py-2 pr-3">
                           <div className="flex flex-wrap gap-1">
                             {(c.controls ?? []).map((ctrl) => (
