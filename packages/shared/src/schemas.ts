@@ -56,13 +56,19 @@ export const decisionOptionSchema = z.object({
   clarityDelta: z.number().min(0).max(1).optional(),
   premium: z.boolean().optional(),
   serviceCard: z.boolean().optional(),
+  requiresCards: z.array(z.string()).optional(),
+  unlocksCards: z.array(z.string()).optional(),
 });
 
-/** Card-library input (a card without its scenario-local id, plus a stable key). */
+/** Card-library input (a card without its scenario-local id, plus a stable key).
+ * `cost` and `scoreDelta` are optional here: the effective values are chosen when
+ * the session is created (per-card overrides), not when the card is authored. */
 export const cardInputSchema = decisionOptionSchema
   .omit({ id: true, premium: true })
   .extend({
     cardKey: z.string().min(1).max(80),
+    cost: z.number().min(0).optional(),
+    scoreDelta: z.number().optional(),
     isActive: z.boolean().optional(),
   });
 
@@ -180,6 +186,16 @@ export const createSessionSchema = z.object({
   /** Reproducibility seed. If omitted the server generates one. */
   seed: z.number().int().min(0).max(2147483647).optional(),
   weights: z.record(metricKeySchema, z.number()).optional(),
+  /** Per-card cost/score overrides chosen at session-creation time. */
+  cardOverrides: z
+    .record(
+      z.string(),
+      z.object({
+        cost: z.number().min(0).optional(),
+        scoreDelta: z.number().optional(),
+      }),
+    )
+    .optional(),
   teams: z
     .array(
       z.object({

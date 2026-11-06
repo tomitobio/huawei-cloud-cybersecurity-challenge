@@ -57,6 +57,7 @@ export function initGameState(teamId: string, scenario: Scenario, seed = 0): Gam
     usedCards: [],
     remainingPool: scenario.deck ? [...scenario.deck.pool] : [],
     knowledge: { revealedSignals: [], clarity: 0 },
+    purchasedCards: [],
   };
   return prepareActiveEvent(scenario, state);
 }
@@ -224,6 +225,15 @@ export function prepareActiveEvent(scenario: Scenario, state: GameStateData): Ga
   state.remainingPool = remaining.filter((id) => !drawnSet.has(id));
   state.usedCards = [...(state.usedCards ?? []), ...drawn];
   state.hand = [...fixed, ...drawn];
+
+  // Inject cards unlocked by already-purchased cards so relations persist
+  // across rounds ("buying one lets you buy another").
+  if (state.purchasedCards && state.purchasedCards.length > 0) {
+    const idx = cardIndex(scenario);
+    for (const id of unlockedCardIds(scenario, state)) {
+      if (idx.has(id) && !state.hand.includes(id)) state.hand.push(id);
+    }
+  }
   state.handEventId = event.id;
 
   const income = handCfg.income ?? scenario.economy?.incomePerRound ?? 0;
@@ -280,6 +290,57 @@ export function conditionMet(
 }
 
 /**
+ * Card-relation gate: every card listed in `requiresCards` must already have
+ * been purchased. Empty/undefined always passes.
+ */
+export function requiresCardsMet(card: DecisionOption, state: GameStateData): boolean {
+  const required = card.requiresCards ?? [];
+  if (required.length === 0) return true;
+  const owned = new Set(state.purchasedCards ?? []);
+  return required.every((id) => owned.has(id));
+}
+
+/**
+ * Card ids unlocked by the cards this team already owns (via `unlocksCards`).
+ * These are injected into future hands so buying one card surfaces another.
+ */
+export function unlockedCardIds(scenario: Scenario, state: GameStateData): string[] {
+  const owned = new Set(state.purchasedCards ?? []);
+  const out = new Set<string>();
+  for (const card of scenario.cards ?? []) {
+    if (!owned.has(card.id)) continue;
+    for (const id of card.unlocksCards ?? []) out.add(id);
+  }
+  return [...out];
+}
+
+/**
+ * Apply per-session cost/score overrides (chosen when the session is created) on
+ * top of a scenario definition. Unknown keys are ignored. Returns a new scenario
+ * when at least one override applies.
+ */
+export function applyCardOverrides(
+  scenario: Scenario,
+  overrides?: Record<string, { cost?: number; scoreDelta?: number }> | null,
+): Scenario {
+  if (!overrides || Object.keys(overrides).length === 0) return scenario;
+  const patch = (card: DecisionOption): DecisionOption => {
+    const o = overrides[card.id];
+    if (!o) return card;
+    return {
+      ...card,
+      cost: typeof o.cost === 'number' ? o.cost : card.cost,
+      scoreDelta: typeof o.scoreDelta === 'number' ? o.scoreDelta : card.scoreDelta,
+    };
+  };
+  const cards = (scenario.cards ?? []).map(patch);
+  const events = scenario.events.map((e) =>
+    e.options?.length ? { ...e, options: e.options.map(patch) } : e,
+  );
+  return { ...scenario, cards, events };
+}
+
+/**
  * Options currently selectable for an event: requirements met and affordable.
  * Works for both deck scenarios (from the drawn hand) and legacy inline options.
  */
@@ -289,7 +350,10 @@ export function availableOptions(
   state: GameStateData,
 ): DecisionOption[] {
   return getEventCards(scenario, event, state).filter(
-    (opt) => conditionMet(opt.requires, state) && state.budget >= opt.cost,
+    (opt) =>
+      conditionMet(opt.requires, state) &&
+      requiresCardsMet(opt, state) &&
+      state.budget >= opt.cost,
   );
 }
 
@@ -323,6 +387,7 @@ export function selectionProblem(
   }
   for (const card of chosen) {
     if (!conditionMet(card.requires, state)) return 'REQUIREMENT_NOT_MET';
+    if (!requiresCardsMet(card, state)) return 'REQUIRES_CARDS';
   }
   const total = chosen.reduce((acc, c) => acc + c.cost, 0);
   if (state.budget < total) return 'INSUFFICIENT_BUDGET';
@@ -369,6 +434,7 @@ export function applyDecisions(
       revealedSignals: [...(inputState.knowledge?.revealedSignals ?? [])],
       clarity: inputState.knowledge?.clarity ?? 0,
     },
+    purchasedCards: [...(inputState.purchasedCards ?? [])],
   };
 
   const currentEventId = inputState.currentEventId;
@@ -380,6 +446,9 @@ export function applyDecisions(
     if (!card) throw new EngineError('OPTION_NOT_FOUND', `Option ${id} not found`);
     if (!conditionMet(card.requires, state)) {
       throw new EngineError('REQUIREMENT_NOT_MET', 'Option requirements are not satisfied');
+    }
+    if (!requiresCardsMet(card, state)) {
+      throw new EngineError('REQUIRES_CARDS', 'This card needs you to purchase another card first');
     }
     chosen.push(card);
   }
@@ -428,6 +497,9 @@ export function applyDecisions(
     for (const flag of option.removesFlags ?? []) {
       state.flags = state.flags.filter((f) => f !== flag);
     }
+
+    // Record ownership so dependent cards become purchasable in future rounds.
+    if (!state.purchasedCards!.includes(option.id)) state.purchasedCards!.push(option.id);
 
     if (option.kind === 'investigate') {
       for (const sig of option.revealsSignals ?? []) {

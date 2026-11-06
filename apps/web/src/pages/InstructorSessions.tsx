@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { useLang } from '../lib/useLang';
 import { Banner, Card, EmptyState, SectionTitle, StatusPill } from '../components/ui';
-import type { ScenarioSummary, SessionListItem } from '../types';
+import type { CardOverride, ScenarioDetail, ScenarioSummary, SessionListItem } from '../types';
 
 export function SessionsPage() {
   const { t } = useTranslation();
@@ -19,6 +19,9 @@ export function SessionsPage() {
   const [teamNames, setTeamNames] = useState('Equipo Alfa\nEquipo Bravo');
   const [seed, setSeed] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [scenarioDetail, setScenarioDetail] = useState<ScenarioDetail | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, CardOverride>>({});
+  const [showCosts, setShowCosts] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -37,6 +40,44 @@ export function SessionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load the selected scenario's cards so the admin can set cost/points per card
+  // for this session (instead of baking those values into the card library).
+  useEffect(() => {
+    if (!scenarioKey) return;
+    let alive = true;
+    api
+      .get<{ scenario: ScenarioDetail }>(`/scenarios/${encodeURIComponent(scenarioKey)}`)
+      .then((res) => {
+        if (!alive) return;
+        setScenarioDetail(res.scenario);
+        setOverrides({});
+      })
+      .catch(() => {
+        if (alive) setScenarioDetail(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [scenarioKey]);
+
+  const deckCards = useMemo(() => {
+    if (!scenarioDetail?.cards) return [];
+    const byId = new Map(scenarioDetail.cards.map((c) => [c.id, c]));
+    const ids = new Set<string>();
+    scenarioDetail.deck?.fixed?.forEach((id) => ids.add(id));
+    scenarioDetail.deck?.pool?.forEach((id) => ids.add(id));
+    if (scenarioDetail.deck?.serviceFixed) {
+      scenarioDetail.cards.forEach((c) => {
+        if (c.serviceCard) ids.add(c.id);
+      });
+    }
+    return [...ids].map((id) => byId.get(id)).filter(Boolean) as NonNullable<ScenarioDetail['cards']>;
+  }, [scenarioDetail]);
+
+  function setOverride(id: string, field: 'cost' | 'scoreDelta', value: number) {
+    setOverrides((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  }
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -50,6 +91,7 @@ export function SessionsPage() {
         name,
         scenarioKey,
         seed: seed.trim() === '' ? undefined : Number(seed.trim()),
+        cardOverrides: Object.keys(overrides).length ? overrides : undefined,
         teams,
       });
       navigate(`/sessions/${res.session.id}`);
@@ -117,6 +159,66 @@ export function SessionsPage() {
                 onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
               />
               <p className="mt-1 text-xs text-slate-500">{t('sessions.seedHint')}</p>
+            </div>
+            <div className="sm:col-span-2 rounded border border-base-700 p-3">
+              <button
+                type="button"
+                className="btn-ghost text-sm"
+                onClick={() => setShowCosts((v) => !v)}
+              >
+                {showCosts ? '▾' : '▸'} {t('sessions.costTitle')} ({deckCards.length})
+              </button>
+              <p className="mt-1 text-xs text-slate-500">{t('sessions.costHint')}</p>
+              {showCosts &&
+                (deckCards.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">{t('sessions.costNoCards')}</p>
+                ) : (
+                  <div className="mt-2 max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-[10px] uppercase text-slate-500">
+                        <tr>
+                          <th className="py-1 pr-2">{t('sessions.costCard')}</th>
+                          <th className="py-1 pr-2">{t('sessions.costDefault')}</th>
+                          <th className="py-1 pr-2">{t('sessions.costCost')}</th>
+                          <th className="py-1 pr-2">{t('sessions.costScore')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deckCards.map((card) => (
+                          <tr key={card.id} className="border-t border-base-700 align-middle">
+                            <td className="py-1 pr-2">
+                              <div className="text-slate-200">{lt(card.label)}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{card.id}</div>
+                            </td>
+                            <td className="py-1 pr-2 font-mono text-slate-400">
+                              {card.cost} / {card.scoreDelta ?? 0}
+                            </td>
+                            <td className="py-1 pr-2">
+                              <input
+                                type="number"
+                                min={0}
+                                className="input w-20 py-1"
+                                value={overrides[card.id]?.cost ?? card.cost}
+                                onChange={(e) => setOverride(card.id, 'cost', Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="py-1 pr-2">
+                              <input
+                                type="number"
+                                className="input w-20 py-1"
+                                value={overrides[card.id]?.scoreDelta ?? (card.scoreDelta ?? 0)}
+                                onChange={(e) => setOverride(card.id, 'scoreDelta', Number(e.target.value))}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button type="button" className="btn-ghost mt-2 text-xs" onClick={() => setOverrides({})}>
+                      {t('sessions.costReset')}
+                    </button>
+                  </div>
+                ))}
             </div>
             <div className="sm:col-span-2">
               <button className="btn-primary">{t('sessions.create')}</button>

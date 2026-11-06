@@ -13,19 +13,19 @@ type Draft = {
   labelEn: string;
   descEs: string;
   descEn: string;
-  cost: number;
   controls: string[];
   tags: string;
   kind: 'action' | 'investigate';
   immediate: string;
   delayed: string;
-  scoreDelta: number;
   clarityDelta: number;
   revealsSignals: string;
   premiumOnFocus: boolean;
   serviceCard: boolean;
   baseWeight: number;
   isActive: boolean;
+  requiresCards: string[];
+  unlocksCards: string[];
 };
 
 function blankDraft(): Draft {
@@ -35,19 +35,19 @@ function blankDraft(): Draft {
     labelEn: '',
     descEs: '',
     descEn: '',
-    cost: 10,
     controls: [],
     tags: '',
     kind: 'action',
     immediate: '',
     delayed: '',
-    scoreDelta: 5,
     clarityDelta: 0,
     revealsSignals: '',
     premiumOnFocus: false,
     serviceCard: false,
     baseWeight: 1,
     isActive: true,
+    requiresCards: [],
+    unlocksCards: [],
   };
 }
 
@@ -58,19 +58,19 @@ function cardToDraft(card: GameCardRow): Draft {
     labelEn: card.label?.en ?? '',
     descEs: card.description?.es ?? '',
     descEn: card.description?.en ?? '',
-    cost: card.cost,
     controls: card.controls ?? [],
     tags: (card.tags ?? []).join(', '),
     kind: (card.kind as Draft['kind']) === 'investigate' ? 'investigate' : 'action',
     immediate: card.immediate ? JSON.stringify(card.immediate) : '',
     delayed: card.delayed ? JSON.stringify(card.delayed) : '',
-    scoreDelta: card.scoreDelta ?? 0,
     clarityDelta: card.clarityDelta ?? 0,
     revealsSignals: (card.revealsSignals ?? []).join(', '),
     premiumOnFocus: Boolean(card.premiumOnFocus),
     serviceCard: Boolean(card.serviceCard),
     baseWeight: card.baseWeight ?? 1,
     isActive: card.isActive !== false,
+    requiresCards: card.requiresCards ?? [],
+    unlocksCards: card.unlocksCards ?? [],
   };
 }
 
@@ -90,19 +90,19 @@ function draftToPayload(d: Draft) {
     cardKey: d.cardKey.trim(),
     label: { es: d.labelEs.trim(), en: d.labelEn.trim() },
     description: { es: d.descEs.trim(), en: d.descEn.trim() },
-    cost: Number(d.cost),
     controls: d.controls,
     tags: d.tags.split(',').map((s) => s.trim()).filter(Boolean),
     kind: d.kind,
     immediate: parseJsonField(d.immediate),
     delayed: parseJsonField(d.delayed),
-    scoreDelta: Number(d.scoreDelta),
     clarityDelta: Number(d.clarityDelta),
     revealsSignals: d.revealsSignals.split(',').map((s) => s.trim()).filter(Boolean),
     premiumOnFocus: d.premiumOnFocus,
     serviceCard: d.serviceCard,
     baseWeight: Number(d.baseWeight),
     isActive: d.isActive,
+    requiresCards: d.requiresCards,
+    unlocksCards: d.unlocksCards,
   };
 }
 
@@ -222,6 +222,14 @@ export function CardLibraryPage() {
     });
   }
 
+  function toggleRelation(field: 'requiresCards' | 'unlocksCards', key: string) {
+    setDraft((d) => {
+      if (!d) return d;
+      const has = d[field].includes(key);
+      return { ...d, [field]: has ? d[field].filter((k) => k !== key) : [...d[field], key] };
+    });
+  }
+
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
   }
@@ -312,6 +320,16 @@ export function CardLibraryPage() {
                           <div className="flex flex-wrap gap-1">
                             {c.serviceCard && <span className="chip text-[10px] text-accent-cyan">🛡</span>}
                             {c.premiumOnFocus && <span className="chip text-[10px] text-accent-amber">★</span>}
+                            {(c.requiresCards?.length ?? 0) > 0 && (
+                              <span className="chip text-[10px] text-rose-200" title={c.requiresCards.join(', ')}>
+                                🔒{c.requiresCards.length}
+                              </span>
+                            )}
+                            {(c.unlocksCards?.length ?? 0) > 0 && (
+                              <span className="chip text-[10px] text-accent-cyan" title={c.unlocksCards.join(', ')}>
+                                🔓{c.unlocksCards.length}
+                              </span>
+                            )}
                             {!c.isActive && <span className="chip text-[10px] text-accent">{t('cards.inactive')}</span>}
                           </div>
                         </td>
@@ -378,26 +396,11 @@ export function CardLibraryPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="label">{t('cards.fieldCost')}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  value={draft.cost}
-                  onChange={(e) => setField('cost', Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="label">{t('cards.fieldScore')}</label>
-                <input
-                  className="input"
-                  type="number"
-                  value={draft.scoreDelta}
-                  onChange={(e) => setField('scoreDelta', Number(e.target.value))}
-                />
-              </div>
+            <div className="rounded border border-base-700 bg-base-800/40 p-2 text-[11px] text-slate-400">
+              {t('cards.costScoreNote')}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="label">{t('cards.fieldWeight')}</label>
                 <input
@@ -408,15 +411,16 @@ export function CardLibraryPage() {
                   value={draft.baseWeight}
                   onChange={(e) => setField('baseWeight', Number(e.target.value))}
                 />
+                <p className="mt-1 text-[10px] text-slate-500">{t('cards.fieldWeightHint')}</p>
               </div>
-            </div>
-
-            <div>
-              <label className="label">{t('cards.fieldKind')}</label>
-              <select className="input" value={draft.kind} onChange={(e) => setField('kind', e.target.value as Draft['kind'])}>
-                <option value="action">action</option>
-                <option value="investigate">investigate</option>
-              </select>
+              <div>
+                <label className="label">{t('cards.fieldKind')}</label>
+                <select className="input" value={draft.kind} onChange={(e) => setField('kind', e.target.value as Draft['kind'])}>
+                  <option value="action">action</option>
+                  <option value="investigate">investigate</option>
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500">{t('cards.fieldKindHint')}</p>
+              </div>
             </div>
 
             <div>
@@ -443,6 +447,56 @@ export function CardLibraryPage() {
             <div>
               <label className="label">{t('cards.fieldTags')}</label>
               <input className="input" value={draft.tags} onChange={(e) => setField('tags', e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label">{t('cards.fieldRequires')}</label>
+              <p className="mb-1 text-[10px] text-slate-500">{t('cards.fieldRequiresHint')}</p>
+              <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+                {cards
+                  .filter((c) => c.cardKey !== draft.cardKey)
+                  .map((c) => (
+                    <button
+                      key={c.cardKey}
+                      type="button"
+                      className={cn(
+                        'chip text-[10px]',
+                        draft.requiresCards.includes(c.cardKey)
+                          ? 'border-rose-300/50 bg-rose-400/10 text-rose-200'
+                          : 'text-slate-400',
+                      )}
+                      onClick={() => toggleRelation('requiresCards', c.cardKey)}
+                      title={c.cardKey}
+                    >
+                      {c.cardKey}
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="label">{t('cards.fieldUnlocks')}</label>
+              <p className="mb-1 text-[10px] text-slate-500">{t('cards.fieldUnlocksHint')}</p>
+              <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+                {cards
+                  .filter((c) => c.cardKey !== draft.cardKey)
+                  .map((c) => (
+                    <button
+                      key={c.cardKey}
+                      type="button"
+                      className={cn(
+                        'chip text-[10px]',
+                        draft.unlocksCards.includes(c.cardKey)
+                          ? 'border-accent-cyan/50 bg-accent-cyan/10 text-accent-cyan'
+                          : 'text-slate-400',
+                      )}
+                      onClick={() => toggleRelation('unlocksCards', c.cardKey)}
+                      title={c.cardKey}
+                    >
+                      {c.cardKey}
+                    </button>
+                  ))}
+              </div>
             </div>
 
             <div>
@@ -490,26 +544,43 @@ export function CardLibraryPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 text-xs text-slate-300">
-              <label className="flex items-center gap-1">
+            <div className="space-y-2 text-xs text-slate-300">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">{t('cards.flagsTitle')}</p>
+              <label className="flex items-start gap-2">
                 <input
                   type="checkbox"
+                  className="mt-0.5"
                   checked={draft.premiumOnFocus}
                   onChange={(e) => setField('premiumOnFocus', e.target.checked)}
                 />
-                {t('cards.fieldPremium')}
+                <span>
+                  <span className="text-slate-200">{t('cards.fieldPremium')}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">{t('cards.fieldPremiumHint')}</span>
+                </span>
               </label>
-              <label className="flex items-center gap-1">
+              <label className="flex items-start gap-2">
                 <input
                   type="checkbox"
+                  className="mt-0.5"
                   checked={draft.serviceCard}
                   onChange={(e) => setField('serviceCard', e.target.checked)}
                 />
-                {t('cards.fieldService')}
+                <span>
+                  <span className="text-slate-200">{t('cards.fieldService')}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">{t('cards.fieldServiceHint')}</span>
+                </span>
               </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={draft.isActive} onChange={(e) => setField('isActive', e.target.checked)} />
-                {t('cards.fieldActive')}
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={draft.isActive}
+                  onChange={(e) => setField('isActive', e.target.checked)}
+                />
+                <span>
+                  <span className="text-slate-200">{t('cards.fieldActive')}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">{t('cards.fieldActiveHint')}</span>
+                </span>
               </label>
             </div>
 

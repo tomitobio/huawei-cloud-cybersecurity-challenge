@@ -72,6 +72,8 @@ model GameCard {
   serviceCard   Boolean  @default(false)
   baseWeight    Float    @default(1)
   isActive      Boolean  @default(true)
+  requiresCards String[] @default([])
+  unlocksCards  String[] @default([])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -92,6 +94,8 @@ model WorkshopSession {
   deadlineSeconds Int            @default(180)
   /// Reproducibility seed shared by all teams in the session.
   seed         Int               @default(0)
+  /// Per-session per-card cost/score overrides (chosen at session creation).
+  cardOverrides Json?
   createdAt    DateTime          @default(now())
   startedAt    DateTime?
   endedAt      DateTime?

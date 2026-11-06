@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  applyCardOverrides,
   applyDecision,
+  applyDecisions,
   availableOptions,
   conditionMet,
   finalScoreFor,
@@ -8,6 +10,7 @@ import {
   getEventCards,
   getVisibleSignals,
   initGameState,
+  requiresCardsMet,
   simulatePlaythrough,
   validateScenario,
   EngineError,
@@ -331,5 +334,95 @@ describe('full playthrough and scoring', () => {
     expect(result.steps.at(-1)!.nextEventId).toBeNull();
     expect(Number.isFinite(result.finalScore)).toBe(true);
     expect(result.finalState.status).toBe('ended');
+  });
+});
+
+/** Two-card deck: buy-a unlocks buy-b, which requires buy-a. */
+function relationScenario(): Scenario {
+  return {
+    key: 'synth-rel',
+    version: 1,
+    name: { es: 'Rel', en: 'Rel' },
+    summary: { es: 'x', en: 'x' },
+    organization: {
+      name: 'S',
+      industry: { es: 'x', en: 'x' },
+      size: { es: 'x', en: 'x' },
+      description: { es: 'x', en: 'x' },
+      objectives: [],
+      criticalAssets: [],
+    },
+    architecture: [],
+    start: { budget: 20, maturity: 'medium' },
+    weights: baseWeights,
+    deck: { fixed: ['buy-a'], pool: [], drawCount: 0, serviceFixed: false },
+    cards: [
+      {
+        id: 'buy-a',
+        label: { es: 'A', en: 'A' },
+        description: { es: 'a', en: 'a' },
+        cost: 2,
+        controls: [],
+        scoreDelta: 5,
+        unlocksCards: ['buy-b'],
+      },
+      {
+        id: 'buy-b',
+        label: { es: 'B', en: 'B' },
+        description: { es: 'b', en: 'b' },
+        cost: 3,
+        controls: [],
+        scoreDelta: 8,
+        requiresCards: ['buy-a'],
+      },
+    ],
+    events: [
+      { id: 'e1', round: 1, phase: { es: 'p', en: 'p' }, title: { es: 't', en: 't' }, narrative: { es: 'n', en: 'n' }, next: 'e2' },
+      { id: 'e2', round: 2, phase: { es: 'p', en: 'p' }, title: { es: 't', en: 't' }, narrative: { es: 'n', en: 'n' } },
+    ],
+    debrief: { learningObjectives: [], correctReasoning: [] },
+  };
+}
+
+describe('card relations and per-session overrides', () => {
+  it('gates a card behind a prerequisite and injects unlocked cards', () => {
+    const scenario = relationScenario();
+    const state = initGameState('team-1', scenario, 0);
+    const cardB = scenario.cards!.find((c) => c.id === 'buy-b')!;
+    expect(state.hand).toContain('buy-a');
+    expect(state.hand).not.toContain('buy-b');
+    expect(requiresCardsMet(cardB, state)).toBe(false);
+    expect(availableOptions(scenario, getEvent(scenario, 'e1'), state).map((o) => o.id)).not.toContain('buy-b');
+
+    const r1 = applyDecision(scenario, state, 'buy-a');
+    expect(r1.state.purchasedCards).toContain('buy-a');
+    expect(r1.state.hand).toContain('buy-b');
+    expect(requiresCardsMet(cardB, r1.state)).toBe(true);
+    expect(availableOptions(scenario, getEvent(scenario, 'e2'), r1.state).map((o) => o.id)).toContain('buy-b');
+
+    const before = r1.state;
+    const r2 = applyDecision(scenario, before, 'buy-b');
+    expect(r2.state.purchasedCards).toContain('buy-b');
+    expect(r2.state.score - before.score).toBe(8);
+    expect(before.budget - r2.state.budget).toBe(3);
+  });
+
+  it('rejects buying a card whose prerequisite is missing', () => {
+    const scenario = relationScenario();
+    const state = initGameState('team-2', scenario, 0);
+    state.hand = ['buy-a', 'buy-b'];
+    expect(() => applyDecisions(scenario, state, ['buy-b'])).toThrowError(/REQUIRES_CARDS|purchase another/);
+  });
+
+  it('applies per-session cost/score overrides on top of the scenario', () => {
+    const scenario = relationScenario();
+    const patched = applyCardOverrides(scenario, { 'buy-a': { cost: 0, scoreDelta: 1 }, 'buy-b': { cost: 1 } });
+    const a = patched.cards!.find((c) => c.id === 'buy-a')!;
+    const b = patched.cards!.find((c) => c.id === 'buy-b')!;
+    expect(a.cost).toBe(0);
+    expect(a.scoreDelta).toBe(1);
+    expect(b.cost).toBe(1);
+    expect(b.scoreDelta).toBe(8);
+    expect(scenario.cards!.find((c) => c.id === 'buy-a')!.cost).toBe(2);
   });
 });

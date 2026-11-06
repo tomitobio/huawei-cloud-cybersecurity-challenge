@@ -2,6 +2,7 @@ import { prisma } from '../db';
 import { ApiError } from '../lib/http';
 import { emitToSession, emitToTeam } from '../socket';
 import {
+  applyCardOverrides,
   applyDecision,
   applyDecisions,
   applyDeltas,
@@ -15,6 +16,7 @@ import {
   initGameState,
   normalizeWeights,
   prepareActiveEvent,
+  requiresCardsMet,
   resolveNextEventId,
   selectionProblem,
   type DecisionOption,
@@ -51,7 +53,8 @@ export async function loadScenarioForSession(sessionId: string): Promise<Scenari
     include: { scenario: true },
   });
   if (!session) throw ApiError.notFound('Session not found');
-  return session.scenario.definition as unknown as Scenario;
+  const base = session.scenario.definition as unknown as Scenario;
+  return applyCardOverrides(base, session.cardOverrides as Record<string, { cost?: number; scoreDelta?: number }> | null);
 }
 
 export interface CreateSessionInput {
@@ -59,6 +62,7 @@ export interface CreateSessionInput {
   scenarioKey: string;
   seed?: number;
   weights?: Record<string, number>;
+  cardOverrides?: Record<string, { cost?: number; scoreDelta?: number }>;
   teams?: { name: string; color?: string; budget?: number; maturity?: 'low' | 'medium' | 'high' }[];
 }
 
@@ -84,6 +88,7 @@ export async function createSession(instructorId: string, input: CreateSessionIn
       scenarioId: scenarioRow.id,
       weights: weights as unknown as object,
       seed,
+      cardOverrides: (input.cardOverrides as unknown as object) ?? undefined,
       status: 'LOBBY',
     },
   });
@@ -154,7 +159,10 @@ export async function getSessionConsole(sessionId: string) {
     },
   });
   if (!session) throw ApiError.notFound('Session not found');
-  const scenario = session.scenario.definition as unknown as Scenario;
+  const scenario = applyCardOverrides(
+    session.scenario.definition as unknown as Scenario,
+    session.cardOverrides as Record<string, { cost?: number; scoreDelta?: number }> | null,
+  );
 
   const teams = session.teams.map((team) => {
     const state = team.state ? asState(team.state.data) : null;
@@ -261,20 +269,24 @@ export async function getTeamWorkspace(teamId: string) {
     },
   });
   if (!team) throw ApiError.notFound('Team not found');
-  const scenario = team.session.scenario.definition as unknown as Scenario;
+  const scenario = applyCardOverrides(
+    team.session.scenario.definition as unknown as Scenario,
+    team.session.cardOverrides as Record<string, { cost?: number; scoreDelta?: number }> | null,
+  );
   const state = team.state ? asState(team.state.data) : initGameState(teamId, scenario, team.session.seed);
 
   const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
   const options: (DecisionOption & { available: boolean; reason?: string })[] = event
     ? getEventCards(scenario, event, state).map((o) => {
         const reqOk = conditionMet(o.requires, state);
+        const relOk = requiresCardsMet(o, state);
         const budgetOk = state.budget >= o.cost;
-        const available = reqOk && budgetOk;
+        const available = reqOk && relOk && budgetOk;
         return {
           ...o,
           // never expose instructor-only fields; options have none, but keep shape safe
           available,
-          reason: !reqOk ? 'requirements' : !budgetOk ? 'budget' : undefined,
+          reason: !reqOk ? 'requirements' : !relOk ? 'requires_cards' : !budgetOk ? 'budget' : undefined,
         };
       })
     : [];
@@ -651,7 +663,10 @@ export async function getAudienceView(token: string) {
     },
   });
   if (!session) throw ApiError.notFound('Audience view not found');
-  const scenario = session.scenario.definition as unknown as Scenario;
+  const scenario = applyCardOverrides(
+    session.scenario.definition as unknown as Scenario,
+    session.cardOverrides as Record<string, { cost?: number; scoreDelta?: number }> | null,
+  );
   const leaderboard = buildLeaderboard(
     session.teams.map((t) => ({ id: t.id, name: t.name, color: t.color, state: t.state ? asState(t.state.data) : null, score: 0 })),
     scenario,

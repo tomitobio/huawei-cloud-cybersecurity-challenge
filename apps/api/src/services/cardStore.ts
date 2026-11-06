@@ -13,7 +13,7 @@ export type CardInput = {
   cardKey: string;
   label: { es: string; en: string };
   description: { es: string; en: string };
-  cost: number;
+  cost?: number;
   controls: string[];
   tags?: string[];
   kind?: 'action' | 'investigate';
@@ -26,6 +26,8 @@ export type CardInput = {
   serviceCard?: boolean;
   baseWeight?: number;
   isActive?: boolean;
+  requiresCards?: string[];
+  unlocksCards?: string[];
 };
 
 /** Map a DB card row to a `DecisionOption` usable by the scenario/engine. */
@@ -46,6 +48,8 @@ export function toDecisionOption(row: GameCardRow): DecisionOption {
     premiumOnFocus: row.premiumOnFocus,
     serviceCard: row.serviceCard,
     baseWeight: row.baseWeight,
+    requiresCards: row.requiresCards,
+    unlocksCards: row.unlocksCards,
   };
 }
 
@@ -67,6 +71,8 @@ export function toApi(row: GameCardRow) {
     serviceCard: row.serviceCard,
     baseWeight: row.baseWeight,
     isActive: row.isActive,
+    requiresCards: row.requiresCards,
+    unlocksCards: row.unlocksCards,
     updatedAt: row.updatedAt,
   };
 }
@@ -90,7 +96,7 @@ export async function createCard(input: CardInput) {
       cardKey: input.cardKey,
       label: input.label as unknown as object,
       description: input.description as unknown as object,
-      cost: input.cost,
+      cost: input.cost ?? 0,
       controls: input.controls,
       tags: input.tags ?? [],
       kind: input.kind ?? 'action',
@@ -103,6 +109,8 @@ export async function createCard(input: CardInput) {
       serviceCard: input.serviceCard ?? false,
       baseWeight: input.baseWeight ?? 1,
       isActive: input.isActive ?? true,
+      requiresCards: input.requiresCards ?? [],
+      unlocksCards: input.unlocksCards ?? [],
     },
   });
   return toApi(row);
@@ -121,19 +129,21 @@ export async function updateCard(currentKey: string, input: CardInput) {
       cardKey: input.cardKey,
       label: input.label as unknown as object,
       description: input.description as unknown as object,
-      cost: input.cost,
+      cost: input.cost ?? row.cost,
       controls: input.controls,
       tags: input.tags ?? [],
       kind: input.kind ?? 'action',
       immediate: (input.immediate as unknown as object) ?? undefined,
       delayed: (input.delayed as unknown as object) ?? undefined,
-      scoreDelta: input.scoreDelta ?? 0,
+      scoreDelta: input.scoreDelta ?? row.scoreDelta,
       clarityDelta: input.clarityDelta ?? 0,
       revealsSignals: input.revealsSignals ?? [],
       premiumOnFocus: input.premiumOnFocus ?? false,
       serviceCard: input.serviceCard ?? false,
       baseWeight: input.baseWeight ?? 1,
       isActive: input.isActive ?? true,
+      requiresCards: input.requiresCards ?? [],
+      unlocksCards: input.unlocksCards ?? [],
     },
   });
   return toApi(updated);

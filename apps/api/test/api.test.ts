@@ -464,3 +464,57 @@ describe('session deletion', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('card relations and session overrides', () => {
+  it('card library stores requires/unlocks relations', async () => {
+    const login = await admin.post('/api/auth/login').send({ email: adminEmail, password: 'Password123!' });
+    expect(login.status).toBe(200);
+    const key = `t-rel-${stamp}`;
+    const created = await admin.post('/api/cards').send({
+      cardKey: key,
+      label: { es: 'Rel', en: 'Rel' },
+      description: { es: 'x', en: 'x' },
+      cost: 1,
+      controls: [],
+      requiresCards: ['fix-monitor'],
+      unlocksCards: ['fix-review'],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.card.requiresCards).toEqual(['fix-monitor']);
+    expect(created.body.card.unlocksCards).toEqual(['fix-review']);
+
+    const list = await admin.get('/api/cards');
+    const found = list.body.cards.find((c: { cardKey: string }) => c.cardKey === key);
+    expect(found.requiresCards).toEqual(['fix-monitor']);
+
+    const del = await admin.del(`/api/cards/${key}`);
+    expect(del.status).toBe(200);
+  });
+
+  it('applies per-card cost/score overrides chosen at session creation', async () => {
+    const create = await instructor.post('/api/sessions').send({
+      name: `Override Session ${stamp}`,
+      scenarioKey: 'ransomware-retail',
+      teams: [{ name: 'OV Team', color: '#22d3ee' }],
+      cardOverrides: { 'fix-monitor': { cost: 99, scoreDelta: 42 } },
+    });
+    expect(create.status).toBe(201);
+    const sid = create.body.session.id;
+    createdSessionIds.push(sid);
+    const team = create.body.session.teams[0];
+
+    const member = request.agent(app);
+    const join = await member.post('/api/join').send({ code: team.joinCode, displayName: 'OvMember' });
+    expect(join.status).toBe(201);
+    createdUserIds.push(join.body.user.id);
+
+    const ws = await member.get(`/api/teams/${team.id}`);
+    expect(ws.status).toBe(200);
+    const opt = (ws.body.workspace.currentEvent.options as { id: string; cost: number; scoreDelta?: number }[]).find(
+      (o) => o.id === 'fix-monitor',
+    );
+    expect(opt).toBeTruthy();
+    expect(opt!.cost).toBe(99);
+    expect(opt!.scoreDelta).toBe(42);
+  });
+});

@@ -18,6 +18,8 @@ export interface GameCardRow {
   serviceCard: boolean;
   baseWeight: number;
   isActive: boolean;
+  requiresCards: string[];
+  unlocksCards: string[];
   updatedAt?: string;
 }
 
@@ -33,6 +35,25 @@ export interface ScenarioSummary {  key: string;
   source?: 'builtin' | 'custom';
   isActive?: boolean;
 }
+
+/** Full-ish scenario detail used when creating a session (for card overrides). */
+export interface ScenarioDetail {
+  key: string;
+  name: LocalizedText;
+  cards?: {
+    id: string;
+    label: LocalizedText;
+    cost: number;
+    scoreDelta?: number;
+    controls: ControlId[];
+    kind?: string;
+    serviceCard?: boolean;
+  }[];
+  deck?: { fixed: string[]; pool: string[]; drawCount: number; serviceFixed?: boolean };
+}
+
+/** A per-card cost/score override chosen when creating a session. */
+export type CardOverride = { cost?: number; scoreDelta?: number };
 
 export interface ScenarioPreviewStep {
   eventId: string;

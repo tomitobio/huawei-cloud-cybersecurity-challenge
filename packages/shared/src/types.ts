@@ -118,6 +118,19 @@ export interface DecisionOption {
    * and their cost scales with the event's `incidentSeverity`.
    */
   serviceCard?: boolean;
+
+  // --- Card relations --------------------------------------------------------
+  /**
+   * Card ids that must have been purchased already for this card to be
+   * selectable (a hard prerequisite). Enables "buy one to be allowed to buy
+   * another".
+   */
+  requiresCards?: string[];
+  /**
+   * Card ids unlocked (added to future hands) once this card is purchased.
+   * Enables "purchasing this card lets you purchase those".
+   */
+  unlocksCards?: string[];
 }
 
 /** An ambiguous signal shown to teams; `truth` is only revealed after investigation. */
@@ -285,6 +298,8 @@ export interface GameStateData {
   handEventId?: string;
   /** Investigated signals and accumulated clarity in [0, 1]. */
   knowledge?: { revealedSignals: string[]; clarity: number };
+  /** Card ids this team has already purchased (across all rounds). */
+  purchasedCards?: string[];
 }
 
 export type SessionStatus = 'LOBBY' | 'ACTIVE' | 'PAUSED' | 'ENDED';
