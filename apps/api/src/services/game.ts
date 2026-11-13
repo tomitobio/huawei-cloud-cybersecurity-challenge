@@ -281,12 +281,22 @@ export async function getTeamWorkspace(teamId: string) {
         const reqOk = conditionMet(o.requires, state);
         const relOk = requiresCardsMet(o, state);
         const budgetOk = state.budget >= o.cost;
-        const available = reqOk && relOk && budgetOk;
+        const effortOk =
+          typeof state.effortRemaining !== 'number' || (o.effort ?? 0) <= state.effortRemaining;
+        const available = reqOk && relOk && budgetOk && effortOk;
         return {
           ...o,
           // never expose instructor-only fields; options have none, but keep shape safe
           available,
-          reason: !reqOk ? 'requirements' : !relOk ? 'requires_cards' : !budgetOk ? 'budget' : undefined,
+          reason: !reqOk
+            ? 'requirements'
+            : !relOk
+              ? 'requires_cards'
+              : !budgetOk
+                ? 'budget'
+                : !effortOk
+                  ? 'effort'
+                  : undefined,
         };
       })
     : [];
@@ -331,6 +341,7 @@ export async function getTeamWorkspace(teamId: string) {
       deadlineAt: team.session.deadlineAt,
       budgetStart: team.budgetStart,
       incomePerRound: scenario.economy?.incomePerRound ?? 0,
+      effortPerRound: scenario.economy?.effortPerRound ?? null,
     },
     scenario: {
       name: scenario.name,
@@ -341,6 +352,7 @@ export async function getTeamWorkspace(teamId: string) {
     state: {
       metrics: state.metrics,
       budget: state.budget,
+      effortRemaining: state.effortRemaining ?? null,
       version: state.version,
       status: state.status,
       flags: state.flags,
@@ -409,6 +421,7 @@ export async function submitDecision(
   }
   if (problem === 'REQUIREMENT_NOT_MET') throw ApiError.badRequest('Option requirements are not satisfied');
   if (problem === 'INSUFFICIENT_BUDGET') throw ApiError.badRequest('The combined cost exceeds the remaining budget');
+  if (problem === 'INSUFFICIENT_EFFORT') throw ApiError.badRequest('The combined work-effort exceeds the effort available this round');
 
   const cards = getEventCards(scenario, event, state);
   const chosen = ids.map((id) => cards.find((o) => o.id === id)!);

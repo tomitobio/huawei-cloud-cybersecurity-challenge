@@ -64,6 +64,7 @@ export const publicServicesScenario: Scenario = {
   deck: { ...STANDARD_DECK },
   economy: {
     incomePerRound: 20,
+    effortPerRound: 6,
     focus: { costMultiplier: 1.4, scoreMultiplier: 1.6 },
     minPerFocusTag: 3,
   },

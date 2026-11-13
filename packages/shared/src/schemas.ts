@@ -35,6 +35,7 @@ export const decisionOptionSchema = z.object({
   label: localizedTextSchema,
   description: localizedTextSchema,
   cost: z.number().min(0),
+  effort: z.number().min(0).optional(),
   controls: z.array(controlIdSchema),
   requires: conditionSchema.optional(),
   grantsFlags: z.array(z.string()).optional(),
@@ -154,6 +155,7 @@ export const scenarioSchema = z.object({
   economy: z
     .object({
       incomePerRound: z.number().min(0),
+      effortPerRound: z.number().min(0).optional(),
       focus: z
         .object({ costMultiplier: z.number().min(0), scoreMultiplier: z.number().min(0) })
         .optional(),

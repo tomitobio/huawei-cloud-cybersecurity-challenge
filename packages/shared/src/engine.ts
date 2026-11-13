@@ -89,10 +89,27 @@ export function incidentSeverityFor(event: ScenarioEvent): number {
 }
 
 /**
+ * Default work-effort for a card when the scenario uses an effort resource but
+ * the card does not declare one. Effort is deliberately *not* a linear copy of
+ * money cost: deploying/operating a product (`serviceCard`) and multi-control
+ * measures are effort-heavy, investigations are cheap, and quick generic actions
+ * fall in between. This is what creates the KIPS-style "money vs. effort"
+ * prioritisation tension.
+ */
+export function defaultEffort(card: DecisionOption): number {
+  if (card.serviceCard) return 3;
+  if ((card.controls?.length ?? 0) > 0) return 2;
+  if (card.kind === 'investigate') return 1;
+  return Math.max(1, Math.min(2, Math.round(card.cost / 6)));
+}
+
+/**
  * Apply focus-premium pricing and service-severity pricing to a card for a given
  * event. Focus premium scales cost & score when a `premiumOnFocus` card's tags
  * hit the event focus. Service cards (`serviceCard`) additionally scale their
- * cost by the event's incident severity. Pure; returns a copy when scaled.
+ * cost by the event's incident severity. When the scenario has an effort
+ * resource, a card without an explicit `effort` gets its default effort here.
+ * Pure; returns a copy when anything is scaled/derived.
  */
 export function effectiveCard(
   card: DecisionOption,
@@ -115,6 +132,9 @@ export function effectiveCard(
   if (card.serviceCard) {
     const severity = incidentSeverityFor(event);
     if (severity !== 1) out = { ...out, cost: Math.round(out.cost * severity) };
+  }
+  if (typeof scenario.economy?.effortPerRound === 'number' && typeof out.effort !== 'number') {
+    out = { ...out, effort: defaultEffort(card) };
   }
   return out;
 }
@@ -199,6 +219,7 @@ export function prepareActiveEvent(scenario: Scenario, state: GameStateData): Ga
   if (!event) {
     state.hand = [];
     state.handEventId = undefined;
+    state.effortRemaining = undefined;
     return state;
   }
   if (state.handEventId === event.id) return state;
@@ -235,6 +256,9 @@ export function prepareActiveEvent(scenario: Scenario, state: GameStateData): Ga
     }
   }
   state.handEventId = event.id;
+
+  // Reset the per-round work-effort allowance for the new round (KIPS-style).
+  state.effortRemaining = scenario.economy?.effortPerRound;
 
   const income = handCfg.income ?? scenario.economy?.incomePerRound ?? 0;
   if (income > 0) state.budget += income;
@@ -353,7 +377,8 @@ export function availableOptions(
     (opt) =>
       conditionMet(opt.requires, state) &&
       requiresCardsMet(opt, state) &&
-      state.budget >= opt.cost,
+      state.budget >= opt.cost &&
+      (typeof state.effortRemaining !== 'number' || (opt.effort ?? 0) <= state.effortRemaining),
   );
 }
 
@@ -391,6 +416,10 @@ export function selectionProblem(
   }
   const total = chosen.reduce((acc, c) => acc + c.cost, 0);
   if (state.budget < total) return 'INSUFFICIENT_BUDGET';
+  const totalEffort = chosen.reduce((acc, c) => acc + (c.effort ?? 0), 0);
+  if (typeof state.effortRemaining === 'number' && totalEffort > state.effortRemaining) {
+    return 'INSUFFICIENT_EFFORT';
+  }
   return null;
 }
 
@@ -456,6 +485,10 @@ export function applyDecisions(
   if (state.budget < totalCost) {
     throw new EngineError('INSUFFICIENT_BUDGET', 'Not enough budget for this selection');
   }
+  const totalEffort = chosen.reduce((acc, c) => acc + (c.effort ?? 0), 0);
+  if (typeof state.effortRemaining === 'number' && totalEffort > state.effortRemaining) {
+    throw new EngineError('INSUFFICIENT_EFFORT', 'Not enough work-effort for this selection this round');
+  }
 
   // Reproducible variability: jitter each option's magnitudes using a stream
   // derived from the session seed + decision counter.
@@ -478,6 +511,9 @@ export function applyDecisions(
   const applied: MetricDeltas = { ...state.pendingDelayed };
   state.pendingDelayed = {};
   state.budget -= totalCost;
+  if (typeof state.effortRemaining === 'number') {
+    state.effortRemaining = Math.max(0, state.effortRemaining - totalEffort);
+  }
 
   // 2-4. apply each chosen option
   for (const option of chosen) {
@@ -525,6 +561,7 @@ export function applyDecisions(
     optionIds: chosen.map((c) => c.id),
     round: event.round,
     cost: totalCost,
+    effort: totalEffort,
   });
 
   // 5. advance the event once
@@ -710,6 +747,19 @@ export function validateScenario(scenario: Scenario): string[] {
       problems.push(`Event ${event.id} next points to unknown event ${event.next}`);
     }
   }
+  // Work-effort feasibility (KIPS-style second resource)
+  const effortPerRound = scenario.economy?.effortPerRound;
+  if (typeof effortPerRound === 'number') {
+    if (effortPerRound <= 0) {
+      problems.push('economy.effortPerRound must be greater than 0 when effort is enabled');
+    }
+    for (const card of scenario.cards ?? []) {
+      if (typeof card.effort === 'number' && card.effort > effortPerRound) {
+        problems.push(`Card ${card.id} effort (${card.effort}) exceeds effortPerRound (${effortPerRound})`);
+      }
+    }
+  }
+
   // reachability from first event
   const first = firstEventId(scenario);
   if (first) {

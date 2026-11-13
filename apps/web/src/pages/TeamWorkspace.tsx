@@ -91,6 +91,16 @@ export function TeamWorkspacePage() {
     ? data.currentEvent.options.filter((o) => selected.includes(o.id)).reduce((acc, o) => acc + o.cost, 0)
     : 0;
   const overBudget = Boolean(data) && selectedCost > data!.state.budget;
+  const effortAvailable =
+    typeof data?.state.effortRemaining === 'number'
+      ? data.state.effortRemaining
+      : typeof data?.session.effortPerRound === 'number'
+        ? data.session.effortPerRound
+        : null;
+  const selectedEffort = data?.currentEvent
+    ? data.currentEvent.options.filter((o) => selected.includes(o.id)).reduce((acc, o) => acc + (o.effort ?? 0), 0)
+    : 0;
+  const overEffort = typeof effortAvailable === 'number' && selectedEffort > effortAvailable;
   const teamFinished = data?.state.status === 'ended';
 
   async function submitDecision() {
@@ -298,10 +308,17 @@ export function TeamWorkspacePage() {
                   {typeof data.state.budget === 'number' && ` / ${data.state.budget}`}
                   {overBudget && ` · ${t('team.overBudget')}`}
                 </span>
+                {typeof effortAvailable === 'number' && (
+                  <span className={cn('text-xs', overEffort ? 'text-accent' : 'text-slate-400')}>
+                    ⚡ {t('team.effortTotal')}: <span className="font-mono">{selectedEffort}</span>
+                    {` / ${effortAvailable}`}
+                    {overEffort && ` · ${t('team.overEffort')}`}
+                  </span>
+                )}
                 <button
                   className="btn-primary"
-                  disabled={!canAct || selected.length === 0 || overBudget}
-                  title={!canAct ? disabledReason : overBudget ? t('team.overBudget') : undefined}
+                  disabled={!canAct || selected.length === 0 || overBudget || overEffort}
+                  title={!canAct ? disabledReason : overBudget ? t('team.overBudget') : overEffort ? t('team.overEffort') : undefined}
                   onClick={() => void submitDecision()}
                 >
                   {data.submittedDecision ? `↻ ${t('team.submit')}` : t('team.submit')}
@@ -356,6 +373,15 @@ export function TeamWorkspacePage() {
               <span className="text-slate-400">{t('common.budget')}</span>
               <span className="font-mono text-lg text-white">{data.state.budget}</span>
             </div>
+            {typeof data.session.effortPerRound === 'number' && (
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <span className="text-slate-400">⚡ {t('team.effort')}</span>
+                <span className="font-mono text-white">
+                  {typeof data.state.effortRemaining === 'number' ? data.state.effortRemaining : data.session.effortPerRound}
+                  {` / ${data.session.effortPerRound}`}
+                </span>
+              </div>
+            )}
             {typeof data.session.incomePerRound === 'number' && data.session.incomePerRound > 0 && (
               <p className="mt-1 text-right text-[11px] text-slate-500">
                 {t('team.budgetIncludes', { income: data.session.incomePerRound })}
@@ -426,7 +452,12 @@ function OptionCard({
   const { t } = useTranslation();
   const { lt } = useLang();
   const unavailable = !option.available;
-  const reason = option.reason === 'budget' ? t('team.budgetLow') : t('team.reqNotMet');
+  const reason =
+    option.reason === 'budget'
+      ? t('team.budgetLow')
+      : option.reason === 'effort'
+        ? t('team.effortLow')
+        : t('team.reqNotMet');
   return (
     <div
       className={cn(
@@ -455,6 +486,9 @@ function OptionCard({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {option.premium && (
               <span className="chip text-[10px] text-accent-amber">★ {t('team.premium')}</span>
+            )}
+            {typeof option.effort === 'number' && option.effort > 0 && (
+              <span className="chip text-[10px] text-accent-amber">⚡ {t('team.effort')} {option.effort}</span>
             )}
             {option.serviceCard && (
               <span className="chip text-[10px] text-accent-cyan">🛡 {t('team.serviceCard')}</span>

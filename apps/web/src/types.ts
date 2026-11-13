@@ -168,6 +168,7 @@ export interface OptionData {
   label: LocalizedText;
   description: LocalizedText;
   cost: number;
+  effort?: number;
   controls: ControlId[];
   immediate?: Record<string, number>;
   delayed?: Record<string, number>;
@@ -210,6 +211,7 @@ export interface TeamWorkspaceData {
     deadlineAt: string | null;
     budgetStart?: number;
     incomePerRound?: number;
+    effortPerRound?: number | null;
   };
   scenario: {
     name: LocalizedText;
@@ -220,6 +222,7 @@ export interface TeamWorkspaceData {
   state: {
     metrics: Metrics;
     budget: number;
+    effortRemaining?: number | null;
     version: number;
     status: string;
     flags: string[];
