@@ -87,7 +87,7 @@ Open <http://localhost:5173>.
 | Role | Email | Password |
 | --- | --- | --- |
 | Instructor | `instructor@hcc.local` | `Instructor123!` |
-| Administrator | `admin@hcc.local` | `Hcc-d25kuoAyPLMz1JVW0VoN!` |
+| Administrator | `admin@hcc.local` | `Admin123!` |
 
 The seed also creates a **demo session** with three teams and prints their join codes.
 

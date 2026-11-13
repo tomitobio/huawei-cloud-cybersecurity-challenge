@@ -5,9 +5,9 @@ import { ensureScenario, createSession } from '../src/services/game';
 import { CARD_LIBRARY } from '@hcc/shared';
 
 async function main() {
-  // Fictional demo account. Change the password before any real use.
-  // Password can be rotated via env: SEED_ADMIN_PASSWORD
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Hcc-d25kuoAyPLMz1JVW0VoN!';
+  // Fictional demo account. This is the intended demo admin login; it can be
+  // overridden (e.g. for a real event) via the SEED_ADMIN_PASSWORD env var.
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Admin123!';
   const admin = await prisma.user.upsert({
     where: { email: 'admin@hcc.local' },
     update: { passwordHash: await hashPassword(adminPassword) },
