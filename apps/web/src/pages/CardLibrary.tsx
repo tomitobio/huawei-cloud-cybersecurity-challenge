@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  CARD_ARCHETYPES,
   CONTROL_IDS,
   METRIC_KEYS,
   classifyArchetype,
@@ -180,6 +181,36 @@ export function CardLibraryPage() {
     for (const g of duplicates) for (const id of g.ids) if (!m.has(id)) m.set(id, g);
     return m;
   }, [duplicates]);
+
+  // Depth (tier) of each card in the unlock tree: 0 = root, 1 = N1, 2 = N2...
+  const depthByKey = useMemo(() => {
+    const byKey = new Map(cards.map((c) => [c.cardKey, c]));
+    const memo = new Map<string, number>();
+    const visit = (key: string, stack: Set<string>): number => {
+      if (memo.has(key)) return memo.get(key)!;
+      if (stack.has(key)) return 0;
+      const c = byKey.get(key);
+      if (!c) return 0;
+      const reqs = (c.requiresCards ?? []).filter((r) => byKey.has(r));
+      if (reqs.length === 0) {
+        memo.set(key, 0);
+        return 0;
+      }
+      stack.add(key);
+      const v = 1 + Math.max(0, ...reqs.map((r) => visit(r, stack)));
+      memo.set(key, v);
+      return v;
+    };
+    for (const c of cards) visit(c.cardKey, new Set());
+    return memo;
+  }, [cards]);
+
+  const tierLabel = (c: GameCardRow) => {
+    const depth = depthByKey.get(c.cardKey) ?? 0;
+    if (depth >= 2) return t('cards.tierN2');
+    if (depth === 1) return t('cards.tierN1');
+    return (c.unlocksCards?.length ?? 0) > 0 ? t('cards.tierRoot') : t('cards.tierStandalone');
+  };
   const dupReasonLabel = (r: DuplicateGroup['reason']) =>
     r === 'service-pair'
       ? t('cards.dupReasonServicePair')
@@ -343,6 +374,7 @@ export function CardLibraryPage() {
                       <th className="py-1 pr-3">{t('cards.colKey')}</th>
                       <th className="py-1 pr-3">{t('cards.colLabel')}</th>
                       <th className="py-1 pr-3">{t('cards.colArch')}</th>
+                      <th className="py-1 pr-3">{t('cards.colReq')}</th>
                       <th className="py-1 pr-3">{t('cards.colControls')}</th>
                       <th className="py-1 pr-3">{t('cards.colKind')}</th>
                       <th className="py-1 pr-3">{t('cards.colWeight')}</th>
@@ -365,6 +397,28 @@ export function CardLibraryPage() {
                             <span className={cn('chip text-[10px] whitespace-nowrap', arch.cls)} title={lt(arch.info.label)}>
                               {arch.info.emoji} {lt(arch.info.label)}
                             </span>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className="chip text-[10px] text-slate-400">{tierLabel(c)}</span>
+                              {(c.requiresCards?.length ?? 0) === 0 ? (
+                                <span className="text-[11px] text-slate-500">{t('cards.reqNone')}</span>
+                              ) : (
+                                (c.requiresCards ?? []).map((id) => {
+                                  const rl = labelByKey.get(id);
+                                  const rlabel = rl ? lt(rl) : id;
+                                  return (
+                                    <span
+                                      key={id}
+                                      className="chip inline-block max-w-[150px] truncate text-[10px] text-rose-200"
+                                      title={`${rlabel} (${id})`}
+                                    >
+                                      🔒 {rlabel}
+                                    </span>
+                                  );
+                                })
+                              )}
+                            </div>
                           </td>
                           <td className="py-2 pr-3">
                             <div className="flex flex-wrap gap-1">
@@ -392,8 +446,8 @@ export function CardLibraryPage() {
                                 </span>
                               )}
                               {dup && (
-                                <span className="chip text-[10px] text-orange-300" title={dup.ids.join(', ')}>
-                                  ⚠ {t('cards.duplicateBadge')}
+                                <span className="chip text-[10px] text-orange-300" title={`${t('cards.duplicateBadge')}: ${dup.ids.join(', ')}`}>
+                                  🔁
                                 </span>
                               )}
                               {!c.isActive && <span className="chip text-[10px] text-accent">{t('cards.inactive')}</span>}
@@ -422,7 +476,7 @@ export function CardLibraryPage() {
 
           <Card className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-200">⚠ {t('cards.duplicatesTitle')}</p>
+              <p className="text-sm font-semibold text-slate-200">🔁 {t('cards.duplicatesTitle')}</p>
               <span className="chip text-[11px] text-slate-400">{duplicates.length}</span>
             </div>
             <p className="text-[11px] text-slate-500">{t('cards.duplicatesHint')}</p>
@@ -451,8 +505,11 @@ export function CardLibraryPage() {
           </Card>
         </div>
 
-        {draft && canEdit && (
-          <Card className="space-y-3">
+        <div className="space-y-3">
+          <SymbolLegend />
+
+          {draft && canEdit && (
+            <Card className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-slate-200">
                 {editingKey ? t('cards.editTitle') : t('cards.newTitle')}
@@ -690,7 +747,8 @@ export function CardLibraryPage() {
               </button>
             </div>
           </Card>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -698,8 +756,10 @@ export function CardLibraryPage() {
 
 /**
  * Visual "unlock tree" view: root (`enable`) → N1 → N2, plus standalone cards.
- * Pulls the relations straight from the card rows, so it reflects whatever the
- * admin has configured (and the seeded CARD_TREE).
+ * On the right of every level we show the card(s) it *requires* ("categorías"),
+ * so the dependency chain reads at a glance. Level-2 cards list both the service
+ * and the level-1 card they build on. Relations come straight from the card rows,
+ * so this reflects whatever the admin configured (and the seeded CARD_TREE).
  */
 function CardTreeView({ cards, dupById }: { cards: GameCardRow[]; dupById: Map<string, DuplicateGroup> }) {
   const { t } = useTranslation();
@@ -725,10 +785,49 @@ function CardTreeView({ cards, dupById }: { cards: GameCardRow[]; dupById: Map<s
         title={dup ? `${key} · ${t('cards.duplicateBadge')}` : key}
       >
         {arch.info.emoji} {label}
-        {dup && ' ⚠'}
+        {dup && ' 🔁'}
       </span>
     );
   };
+
+  // "What do I need to activate this card?" rendered as category chips.
+  const reqChips = (key: string) => {
+    const reqs = byKey.get(key)?.requiresCards ?? [];
+    if (reqs.length === 0) {
+      return <span className="text-[11px] text-slate-600">{t('cards.reqNone')}</span>;
+    }
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        {reqs.map((r) => {
+          const rc = byKey.get(r);
+          const arch = archetypeBadge(classifyArchetype(rc ?? { id: r }));
+          return (
+            <span key={r} className={cn('chip text-[10px] whitespace-nowrap', arch.cls)} title={r}>
+              🔒 {rc ? lt(rc.label) : r}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // One dependency row: [tier + card] ............ requiere: [chips]
+  const row = (key: string, tier: string, arrow: boolean) => (
+    <div
+      key={key}
+      className="flex flex-wrap items-center justify-between gap-2 rounded px-1 py-1 hover:bg-base-800/40"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="chip text-[9px] text-slate-500">{tier}</span>
+        {arrow && <span className="text-slate-600">↳</span>}
+        {chip(key)}
+      </div>
+      <div className="ml-auto flex items-center gap-1 text-[10px] text-slate-500">
+        <span className="uppercase tracking-wide">{t('cards.reqLabel')}</span>
+        {reqChips(key)}
+      </div>
+    </div>
+  );
 
   if (roots.length === 0) {
     return <EmptyState message={t('cards.treeHint')} />;
@@ -741,28 +840,19 @@ function CardTreeView({ cards, dupById }: { cards: GameCardRow[]; dupById: Map<s
         const children = root.unlocksCards ?? [];
         return (
           <div key={root.cardKey} className="rounded border border-base-700 bg-base-800/30 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="chip text-[10px] text-slate-500">{t('cards.tierRoot')}</span>
-              {chip(root.cardKey)}
-            </div>
+            {row(root.cardKey, t('cards.tierRoot'), false)}
             {children.length > 0 && (
-              <div className="mt-2 space-y-1.5 border-l border-base-700 pl-4">
+              <div className="mt-1 space-y-1 border-l border-base-700 pl-3">
                 {children.map((childKey) => {
                   const child = byKey.get(childKey);
-                  const grand = child?.unlocksCards ?? [];
                   if (!child) return null;
+                  const grand = child.unlocksCards ?? [];
                   return (
                     <div key={childKey}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-slate-600">↳</span>
-                        <span className="chip text-[9px] text-slate-500">{t('cards.tierN1')}</span>
-                        {chip(childKey)}
-                      </div>
+                      {row(childKey, t('cards.tierN1'), true)}
                       {grand.length > 0 && (
-                        <div className="mt-1 ml-6 flex flex-wrap items-center gap-2">
-                          <span className="text-slate-600">↳</span>
-                          <span className="chip text-[9px] text-slate-500">{t('cards.tierN2')}</span>
-                          {grand.map((g) => chip(g))}
+                        <div className="border-l border-base-700/60 pl-3">
+                          {grand.map((g) => row(g, t('cards.tierN2'), true))}
                         </div>
                       )}
                     </div>
@@ -779,9 +869,60 @@ function CardTreeView({ cards, dupById }: { cards: GameCardRow[]; dupById: Map<s
             <span className="chip text-[10px] text-slate-500">{t('cards.tierStandalone')}</span>
             <span className="text-[11px] text-slate-500">{standalone.length}</span>
           </div>
-          <div className="flex flex-wrap gap-1">{standalone.map((c) => chip(c.cardKey))}</div>
+          <div className="space-y-1">{standalone.map((c) => row(c.cardKey, t('cards.tierStandalone'), false))}</div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Side legend ("mapa de símbolos"): explains every glyph that can show up in the
+ * table/tree — the archetype "shapes" plus the status/flag symbols.
+ */
+function SymbolLegend() {
+  const { t } = useTranslation();
+  const { lt } = useLang();
+  const archetypes = Object.values(CARD_ARCHETYPES);
+
+  const symbols: { glyph: string; label: string; cls?: string }[] = [
+    { glyph: '🛡', label: t('cards.legendService') },
+    { glyph: '★', label: t('cards.legendPremium'), cls: 'text-accent-amber' },
+    { glyph: '🔒', label: t('cards.legendRequires'), cls: 'text-rose-200' },
+    { glyph: '🔓', label: t('cards.legendUnlocks'), cls: 'text-accent-cyan' },
+    { glyph: '🔁', label: t('cards.legendDuplicate'), cls: 'text-orange-300' },
+  ];
+
+  return (
+    <Card className="space-y-3 self-start">
+      <p className="text-sm font-semibold text-slate-200">🗺 {t('cards.legendTitle')}</p>
+
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('cards.legendArchetypes')}</p>
+        <div className="grid grid-cols-1 gap-1">
+          {archetypes.map((a) => {
+            const b = archetypeBadge(a.key);
+            return (
+              <div key={a.key} className="flex items-center gap-2 text-[11px] text-slate-300">
+                <span className={cn('chip w-6 justify-center text-[11px]', b.cls)}>{a.emoji}</span>
+                <span>{lt(a.label)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-1.5 border-t border-base-700 pt-2">
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('cards.legendSymbols')}</p>
+        <div className="grid grid-cols-1 gap-1">
+          {symbols.map((s) => (
+            <div key={s.glyph} className="flex items-center gap-2 text-[11px] text-slate-300">
+              <span className={cn('chip w-6 justify-center text-[11px] text-slate-200', s.cls)}>{s.glyph}</span>
+              <span>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 }

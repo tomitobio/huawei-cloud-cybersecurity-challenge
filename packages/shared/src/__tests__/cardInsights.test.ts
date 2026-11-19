@@ -19,9 +19,16 @@ describe('unlock tree (CARD_TREE) is applied to the library', () => {
 
   it('children require their parent (including a second tier)', () => {
     expect(CARD_LIBRARY['waf-tune']!.requiresCards).toEqual(['waf-enable']);
-    expect(CARD_LIBRARY['waf-web-tampering']!.requiresCards).toEqual(['waf-injection']);
-    expect(CARD_LIBRARY['hss-isolate']!.requiresCards).toEqual(['hss-investigate']);
     expect(CARD_LIBRARY['restore-clean']!.requiresCards).toEqual(['backup-verify']);
+  });
+
+  it('level-2 cards require the service AND a level-1 card of the same service', () => {
+    expect(CARD_LIBRARY['waf-web-tampering']!.requiresCards).toEqual(['waf-enable', 'waf-injection']);
+    expect(CARD_LIBRARY['hss-isolate']!.requiresCards).toEqual(['hss-enable', 'hss-investigate']);
+    expect(CARD_LIBRARY['cbh-revoke']!.requiresCards).toEqual(['cbh-enable', 'cbh-audit']);
+    expect(CARD_LIBRARY['dew-keys']!.requiresCards).toEqual(['dew-enable', 'dew-encrypt']);
+    // and the level-1 card unlocks it so it can surface in later hands
+    expect(CARD_LIBRARY['waf-injection']!.unlocksCards).toEqual(['waf-web-tampering']);
   });
 
   it('requiresCardsMet gates a child until its parent is purchased', () => {

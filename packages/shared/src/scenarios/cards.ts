@@ -845,9 +845,10 @@ export const CARD_TREE: Record<
   'waf-enable': { unlocksCards: ['waf-monitor', 'waf-tune', 'waf-injection', 'waf-anti-bot'] },
   'waf-monitor': { requiresCards: ['waf-enable'] },
   'waf-tune': { requiresCards: ['waf-enable'] },
-  'waf-injection': { requiresCards: ['waf-enable'] },
+  'waf-injection': { requiresCards: ['waf-enable'], unlocksCards: ['waf-web-tampering'] },
   'waf-anti-bot': { requiresCards: ['waf-enable'] },
-  'waf-web-tampering': { requiresCards: ['waf-injection'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'waf-web-tampering': { requiresCards: ['waf-enable', 'waf-injection'] },
 
   // --- CFW: enable -> operate ---------------------------------------------
   'cfw-enable': { unlocksCards: ['cfw-egress', 'cfw-segment', 'cfw-allowlist', 'cfw-scrub'] },
@@ -858,22 +859,25 @@ export const CARD_TREE: Record<
 
   // --- HSS: enable -> operate -> contain ----------------------------------
   'hss-enable': { unlocksCards: ['hss-investigate', 'hss-patch', 'hss-baseline'] },
-  'hss-investigate': { requiresCards: ['hss-enable'] },
+  'hss-investigate': { requiresCards: ['hss-enable'], unlocksCards: ['hss-isolate'] },
   'hss-patch': { requiresCards: ['hss-enable'] },
   'hss-baseline': { requiresCards: ['hss-enable'] },
-  'hss-isolate': { requiresCards: ['hss-investigate'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'hss-isolate': { requiresCards: ['hss-enable', 'hss-investigate'] },
 
   // --- CBH: enable -> operate -> revoke -----------------------------------
   'cbh-enable': { unlocksCards: ['cbh-audit', 'cbh-named'] },
-  'cbh-audit': { requiresCards: ['cbh-enable'] },
+  'cbh-audit': { requiresCards: ['cbh-enable'], unlocksCards: ['cbh-revoke'] },
   'cbh-named': { requiresCards: ['cbh-enable'] },
-  'cbh-revoke': { requiresCards: ['cbh-audit'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'cbh-revoke': { requiresCards: ['cbh-enable', 'cbh-audit'] },
 
   // --- DEW: enable -> operate -> key lifecycle ----------------------------
   'dew-enable': { unlocksCards: ['dew-encrypt', 'dew-secrets'] },
-  'dew-encrypt': { requiresCards: ['dew-enable'] },
+  'dew-encrypt': { requiresCards: ['dew-enable'], unlocksCards: ['dew-keys'] },
   'dew-secrets': { requiresCards: ['dew-enable'] },
-  'dew-keys': { requiresCards: ['dew-encrypt'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'dew-keys': { requiresCards: ['dew-enable', 'dew-encrypt'] },
 
   // --- SecMaster: enable -> operate ---------------------------------------
   'secmaster-enable': { unlocksCards: ['secmaster-correlate', 'soc-coordinate'] },
