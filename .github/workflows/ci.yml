@@ -56,6 +56,9 @@ jobs:
       - name: Apply database migrations
         run: npm run db:deploy -w @hcc/api
 
+      - name: Seed database
+        run: npm run db:seed -w @hcc/api
+
       - name: Lint
         run: npm run lint
 
