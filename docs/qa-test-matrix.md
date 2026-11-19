@@ -25,7 +25,7 @@ ambiguous signals, investigation mechanics, per-round economy). All content is f
    `prisma migrate deploy` (or `db:deploy -w @hcc/api`).
 3. Seed demo users (if not already): `npm run db:seed -w @hcc/api`.
 4. Run: `npm run dev` → web `http://localhost:5173`, API `http://localhost:4000`.
-5. Demo logins: `instructor@hcc.local / Instructor123!` and `admin@hcc.local / Admin123!`.
+5. Demo logins: `instructor@hcc.local / Instructor123!` and `admin@admin.com / adminSOY4592`.
 
 > Tip: pin a **seed** when creating a session to reproduce the exact same draws.
 

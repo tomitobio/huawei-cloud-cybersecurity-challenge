@@ -29,7 +29,7 @@ export function LoginPage() {
   }
 
   async function demo() {
-    const creds = { email: 'admin@hcc.local', password: 'Hcc-d25kuoAyPLMz1JVW0VoN!' };
+    const creds = { email: 'admin@admin.com', password: 'adminSOY4592' };
     setBusy(true);
     setError(null);
     try {

@@ -19,7 +19,7 @@ Audience: instructors and administrators.
 | **Audience** | Read-only public view via a token link |
 
 Demo accounts (seeded, fictional): `instructor@hcc.local` / `Instructor123!` and
-`admin@hcc.local` / `Admin123!`.
+`admin@admin.com` / `adminSOY4592`.
 
 ---
 
