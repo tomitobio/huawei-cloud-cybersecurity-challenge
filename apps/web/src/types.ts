@@ -182,6 +182,12 @@ export interface OptionData {
   serviceCard?: boolean;
   revealsSignals?: string[];
   clarityDelta?: number;
+  requiresCards?: string[];
+  unlocksCards?: string[];
+  /** Cards that must be owned before this one is selectable (resolved labels). */
+  missingRequires?: { id: string; label: LocalizedText }[];
+  /** Cards this one unlocks (resolved labels). */
+  unlocks?: { id: string; label: LocalizedText }[];
   available: boolean;
   reason?: string;
 }

@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CONTROL_IDS, METRIC_KEYS } from '@hcc/shared';
+import {
+  CONTROL_IDS,
+  METRIC_KEYS,
+  classifyArchetype,
+  findCardDuplicates,
+  type DuplicateGroup,
+} from '@hcc/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/useLang';
+import { archetypeBadge } from '../lib/archetype';
 import { Banner, Card, EmptyState, SectionTitle, cn } from '../components/ui';
 import type { GameCardRow } from '../types';
 
@@ -116,6 +123,7 @@ export function CardLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [controlFilter, setControlFilter] = useState<string>('');
+  const [view, setView] = useState<'table' | 'tree'>('table');
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -148,6 +156,36 @@ export function CardLibraryPage() {
       return hay.includes(q);
     });
   }, [cards, query, controlFilter]);
+
+  const labelByKey = useMemo(() => new Map(cards.map((c) => [c.cardKey, c.label])), [cards]);
+
+  const duplicates = useMemo<DuplicateGroup[]>(
+    () =>
+      findCardDuplicates(
+        cards.map((c) => ({
+          id: c.cardKey,
+          label: c.label,
+          tags: c.tags,
+          controls: c.controls,
+          kind: c.kind,
+          scoreDelta: c.scoreDelta,
+          serviceCard: c.serviceCard,
+          cost: c.cost,
+        })),
+      ),
+    [cards],
+  );
+  const dupById = useMemo(() => {
+    const m = new Map<string, DuplicateGroup>();
+    for (const g of duplicates) for (const id of g.ids) if (!m.has(id)) m.set(id, g);
+    return m;
+  }, [duplicates]);
+  const dupReasonLabel = (r: DuplicateGroup['reason']) =>
+    r === 'service-pair'
+      ? t('cards.dupReasonServicePair')
+      : r === 'similar-name'
+        ? t('cards.dupReasonSimilarName')
+        : t('cards.dupReasonSameContext');
 
   function startNew() {
     setError(null);
@@ -275,12 +313,28 @@ export function CardLibraryPage() {
               <span className="chip text-[11px] text-slate-400">
                 {filtered.length}/{cards.length}
               </span>
+              <div className="flex gap-1">
+                <button
+                  className={cn('btn-ghost px-2 py-1 text-xs', view === 'table' && 'ring-1 ring-accent-cyan/50 text-accent-cyan')}
+                  onClick={() => setView('table')}
+                >
+                  {t('cards.tableView')}
+                </button>
+                <button
+                  className={cn('btn-ghost px-2 py-1 text-xs', view === 'tree' && 'ring-1 ring-accent-cyan/50 text-accent-cyan')}
+                  onClick={() => setView('tree')}
+                >
+                  {t('cards.treeView')}
+                </button>
+              </div>
             </div>
 
             {loading ? (
               <EmptyState message={t('common.loading')} />
             ) : filtered.length === 0 ? (
               <EmptyState message={t('cards.empty')} />
+            ) : view === 'tree' ? (
+              <CardTreeView cards={filtered} dupById={dupById} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -288,6 +342,7 @@ export function CardLibraryPage() {
                     <tr>
                       <th className="py-1 pr-3">{t('cards.colKey')}</th>
                       <th className="py-1 pr-3">{t('cards.colLabel')}</th>
+                      <th className="py-1 pr-3">{t('cards.colArch')}</th>
                       <th className="py-1 pr-3">{t('cards.colControls')}</th>
                       <th className="py-1 pr-3">{t('cards.colKind')}</th>
                       <th className="py-1 pr-3">{t('cards.colWeight')}</th>
@@ -296,57 +351,101 @@ export function CardLibraryPage() {
                     </tr>
                   </thead>
                   <tbody className="text-slate-300">
-                    {filtered.map((c) => (
-                      <tr key={c.cardKey} className="border-t border-base-700 align-top">
-                        <td className="py-2 pr-3 font-mono text-xs">{c.cardKey}</td>
-                        <td className="py-2 pr-3">
-                          <div className="text-slate-100">{c.label ? lt(c.label) : '—'}</div>
-                          <div className="text-[11px] text-slate-500">{c.description ? lt(c.description) : ''}</div>
-                        </td>
-                        <td className="py-2 pr-3">
-                          <div className="flex flex-wrap gap-1">
-                            {(c.controls ?? []).map((ctrl) => (
-                              <span key={ctrl} className="chip text-[10px]">
-                                {ctrl}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-3 text-xs">{c.kind}</td>
-                        <td className="py-2 pr-3 font-mono text-xs">{c.baseWeight}</td>
-                        <td className="py-2 pr-3">
-                          <div className="flex flex-wrap gap-1">
-                            {c.serviceCard && <span className="chip text-[10px] text-accent-cyan">🛡</span>}
-                            {c.premiumOnFocus && <span className="chip text-[10px] text-accent-amber">★</span>}
-                            {(c.requiresCards?.length ?? 0) > 0 && (
-                              <span className="chip text-[10px] text-rose-200" title={c.requiresCards.join(', ')}>
-                                🔒{c.requiresCards.length}
-                              </span>
-                            )}
-                            {(c.unlocksCards?.length ?? 0) > 0 && (
-                              <span className="chip text-[10px] text-accent-cyan" title={c.unlocksCards.join(', ')}>
-                                🔓{c.unlocksCards.length}
-                              </span>
-                            )}
-                            {!c.isActive && <span className="chip text-[10px] text-accent">{t('cards.inactive')}</span>}
-                          </div>
-                        </td>
-                        {canEdit && (
+                    {filtered.map((c) => {
+                      const arch = archetypeBadge(classifyArchetype(c));
+                      const dup = dupById.get(c.cardKey);
+                      return (
+                        <tr key={c.cardKey} className="border-t border-base-700 align-top">
+                          <td className="py-2 pr-3 font-mono text-xs">{c.cardKey}</td>
                           <td className="py-2 pr-3">
-                            <div className="flex gap-1">
-                              <button className="btn-ghost px-2 py-1 text-xs" onClick={() => startEdit(c)}>
-                                {t('cards.edit')}
-                              </button>
-                              <button className="btn-ghost px-2 py-1 text-xs text-rose-300" onClick={() => void remove(c)}>
-                                {t('cards.delete')}
-                              </button>
+                            <div className="text-slate-100">{c.label ? lt(c.label) : '—'}</div>
+                            <div className="text-[11px] text-slate-500">{c.description ? lt(c.description) : ''}</div>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className={cn('chip text-[10px] whitespace-nowrap', arch.cls)} title={lt(arch.info.label)}>
+                              {arch.info.emoji} {lt(arch.info.label)}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <div className="flex flex-wrap gap-1">
+                              {(c.controls ?? []).map((ctrl) => (
+                                <span key={ctrl} className="chip text-[10px]">
+                                  {ctrl}
+                                </span>
+                              ))}
                             </div>
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          <td className="py-2 pr-3 text-xs">{c.kind}</td>
+                          <td className="py-2 pr-3 font-mono text-xs">{c.baseWeight}</td>
+                          <td className="py-2 pr-3">
+                            <div className="flex flex-wrap gap-1">
+                              {c.serviceCard && <span className="chip text-[10px] text-accent-cyan">🛡</span>}
+                              {c.premiumOnFocus && <span className="chip text-[10px] text-accent-amber">★</span>}
+                              {(c.requiresCards?.length ?? 0) > 0 && (
+                                <span className="chip text-[10px] text-rose-200" title={c.requiresCards.join(', ')}>
+                                  🔒{c.requiresCards.length}
+                                </span>
+                              )}
+                              {(c.unlocksCards?.length ?? 0) > 0 && (
+                                <span className="chip text-[10px] text-accent-cyan" title={c.unlocksCards.join(', ')}>
+                                  🔓{c.unlocksCards.length}
+                                </span>
+                              )}
+                              {dup && (
+                                <span className="chip text-[10px] text-orange-300" title={dup.ids.join(', ')}>
+                                  ⚠ {t('cards.duplicateBadge')}
+                                </span>
+                              )}
+                              {!c.isActive && <span className="chip text-[10px] text-accent">{t('cards.inactive')}</span>}
+                            </div>
+                          </td>
+                          {canEdit && (
+                            <td className="py-2 pr-3">
+                              <div className="flex gap-1">
+                                <button className="btn-ghost px-2 py-1 text-xs" onClick={() => startEdit(c)}>
+                                  {t('cards.edit')}
+                                </button>
+                                <button className="btn-ghost px-2 py-1 text-xs text-rose-300" onClick={() => void remove(c)}>
+                                  {t('cards.delete')}
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </Card>
+
+          <Card className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-200">⚠ {t('cards.duplicatesTitle')}</p>
+              <span className="chip text-[11px] text-slate-400">{duplicates.length}</span>
+            </div>
+            <p className="text-[11px] text-slate-500">{t('cards.duplicatesHint')}</p>
+            {duplicates.length === 0 ? (
+              <p className="text-xs text-slate-400">{t('cards.noDuplicates')}</p>
+            ) : (
+              <div className="space-y-2">
+                {duplicates.map((g, i) => (
+                  <div key={i} className="rounded border border-base-700 bg-base-800/40 p-2">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                      <span className="chip text-[10px] text-orange-300">{dupReasonLabel(g.reason)}</span>
+                      <span className="font-mono">{g.score}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {g.ids.map((id) => (
+                        <span key={id} className="chip text-[10px] text-slate-200" title={id}>
+                          {labelByKey.get(id) ? lt(labelByKey.get(id)!) : id}
+                          <span className="ml-1 font-mono text-[9px] text-slate-500">{id}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </Card>
@@ -593,6 +692,96 @@ export function CardLibraryPage() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Visual "unlock tree" view: root (`enable`) → N1 → N2, plus standalone cards.
+ * Pulls the relations straight from the card rows, so it reflects whatever the
+ * admin has configured (and the seeded CARD_TREE).
+ */
+function CardTreeView({ cards, dupById }: { cards: GameCardRow[]; dupById: Map<string, DuplicateGroup> }) {
+  const { t } = useTranslation();
+  const { lt } = useLang();
+  const byKey = new Map(cards.map((c) => [c.cardKey, c]));
+
+  const roots = cards.filter(
+    (c) => (c.unlocksCards?.length ?? 0) > 0 && (c.requiresCards?.length ?? 0) === 0,
+  );
+  const standalone = cards.filter(
+    (c) => (c.requiresCards?.length ?? 0) === 0 && (c.unlocksCards?.length ?? 0) === 0,
+  );
+
+  const chip = (key: string, size = 'text-[11px]') => {
+    const c = byKey.get(key);
+    const arch = archetypeBadge(classifyArchetype(c ?? { id: key }));
+    const label = c ? lt(c.label) : key;
+    const dup = dupById.has(key);
+    return (
+      <span
+        key={key}
+        className={cn('chip whitespace-nowrap', size, arch.cls, dup && 'ring-1 ring-orange-400/50')}
+        title={dup ? `${key} · ${t('cards.duplicateBadge')}` : key}
+      >
+        {arch.info.emoji} {label}
+        {dup && ' ⚠'}
+      </span>
+    );
+  };
+
+  if (roots.length === 0) {
+    return <EmptyState message={t('cards.treeHint')} />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-slate-500">{t('cards.treeHint')}</p>
+      {roots.map((root) => {
+        const children = root.unlocksCards ?? [];
+        return (
+          <div key={root.cardKey} className="rounded border border-base-700 bg-base-800/30 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip text-[10px] text-slate-500">{t('cards.tierRoot')}</span>
+              {chip(root.cardKey)}
+            </div>
+            {children.length > 0 && (
+              <div className="mt-2 space-y-1.5 border-l border-base-700 pl-4">
+                {children.map((childKey) => {
+                  const child = byKey.get(childKey);
+                  const grand = child?.unlocksCards ?? [];
+                  if (!child) return null;
+                  return (
+                    <div key={childKey}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-slate-600">↳</span>
+                        <span className="chip text-[9px] text-slate-500">{t('cards.tierN1')}</span>
+                        {chip(childKey)}
+                      </div>
+                      {grand.length > 0 && (
+                        <div className="mt-1 ml-6 flex flex-wrap items-center gap-2">
+                          <span className="text-slate-600">↳</span>
+                          <span className="chip text-[9px] text-slate-500">{t('cards.tierN2')}</span>
+                          {grand.map((g) => chip(g))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {standalone.length > 0 && (
+        <div className="rounded border border-base-700 bg-base-800/30 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="chip text-[10px] text-slate-500">{t('cards.tierStandalone')}</span>
+            <span className="text-[11px] text-slate-500">{standalone.length}</span>
+          </div>
+          <div className="flex flex-wrap gap-1">{standalone.map((c) => chip(c.cardKey))}</div>
+        </div>
+      )}
     </div>
   );
 }

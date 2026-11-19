@@ -5,6 +5,8 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/useLang';
 import { getSocket, joinSessionRoom, joinTeamRoom } from '../lib/socket';
+import { classifyArchetype } from '@hcc/shared';
+import { archetypeBadge } from '../lib/archetype';
 import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
 import {
   Banner,
@@ -457,7 +459,10 @@ function OptionCard({
       ? t('team.budgetLow')
       : option.reason === 'effort'
         ? t('team.effortLow')
-        : t('team.reqNotMet');
+        : option.reason === 'requires_cards'
+          ? t('team.requiresCards')
+          : t('team.reqNotMet');
+  const { info: archInfo, cls: archCls } = archetypeBadge(classifyArchetype(option));
   return (
     <div
       className={cn(
@@ -484,6 +489,9 @@ function OptionCard({
           </div>
           <p className="mt-1 text-sm text-slate-400">{lt(option.description)}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={cn('chip text-[10px]', archCls)} title={lt(archInfo.label)}>
+              {archInfo.emoji} {lt(archInfo.label)}
+            </span>
             {option.premium && (
               <span className="chip text-[10px] text-accent-amber">★ {t('team.premium')}</span>
             )}
@@ -505,6 +513,16 @@ function OptionCard({
             {option.controls.map((c) => (
               <span key={c} className="chip text-[10px] text-accent-cyan">{c}</span>
             ))}
+            {(option.missingRequires?.length ?? 0) > 0 && (
+              <span className="chip text-[10px] text-rose-300" title={option.missingRequires!.map((m) => lt(m.label)).join(', ')}>
+                🔒 {t('team.requiresCards')}: {option.missingRequires!.map((m) => lt(m.label)).join(', ')}
+              </span>
+            )}
+            {(option.unlocks?.length ?? 0) > 0 && (
+              <span className="chip text-[10px] text-accent-cyan" title={option.unlocks!.map((u) => lt(u.label)).join(', ')}>
+                🔓 {t('team.unlocksCards')}: {option.unlocks!.map((u) => lt(u.label)).join(', ')}
+              </span>
+            )}
             {option.delayed && (
               <span className="chip text-[10px] text-amber-200">
                 delayed: {Object.entries(option.delayed).map(([k, v]) => `${t(`metrics.${k}`, { defaultValue: k })} ${v > 0 ? '+' : ''}${v}`).join(', ')}

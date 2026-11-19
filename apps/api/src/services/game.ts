@@ -276,7 +276,16 @@ export async function getTeamWorkspace(teamId: string) {
   const state = team.state ? asState(team.state.data) : initGameState(teamId, scenario, team.session.seed);
 
   const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
-  const options: (DecisionOption & { available: boolean; reason?: string })[] = event
+  // Resolve card labels for unlock-tree hints (what's blocking, what it unlocks).
+  const cardById = new Map((scenario.cards ?? []).map((c) => [c.id, c]));
+  const labelOf = (id: string) => cardById.get(id)?.label;
+  const owned = new Set(state.purchasedCards ?? []);
+  const options: (DecisionOption & {
+    available: boolean;
+    reason?: string;
+    missingRequires: { id: string; label: { es: string; en: string } }[];
+    unlocks: { id: string; label: { es: string; en: string } }[];
+  })[] = event
     ? getEventCards(scenario, event, state).map((o) => {
         const reqOk = conditionMet(o.requires, state);
         const relOk = requiresCardsMet(o, state);
@@ -284,10 +293,21 @@ export async function getTeamWorkspace(teamId: string) {
         const effortOk =
           typeof state.effortRemaining !== 'number' || (o.effort ?? 0) <= state.effortRemaining;
         const available = reqOk && relOk && budgetOk && effortOk;
+        const missingRequires = (o.requiresCards ?? [])
+          .filter((id) => !owned.has(id))
+          .map((id) => ({ id, label: labelOf(id) }))
+          .filter((x): x is { id: string; label: { es: string; en: string } } => Boolean(x.label));
+        const unlocks = (o.unlocksCards ?? [])
+          .map((id) => ({ id, label: labelOf(id) }))
+          .filter((x): x is { id: string; label: { es: string; en: string } } => Boolean(x.label));
         return {
           ...o,
           // never expose instructor-only fields; options have none, but keep shape safe
           available,
+          requiresCards: o.requiresCards ?? [],
+          unlocksCards: o.unlocksCards ?? [],
+          missingRequires,
+          unlocks,
           reason: !reqOk
             ? 'requirements'
             : !relOk

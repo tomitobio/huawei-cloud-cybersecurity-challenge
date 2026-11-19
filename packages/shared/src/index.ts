@@ -4,5 +4,6 @@ export * from './rng';
 export * from './scoring';
 export * from './engine';
 export * from './catalog';
+export * from './cardInsights';
 export * from './schemas';
 export * from './scenarios/index';

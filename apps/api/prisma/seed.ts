@@ -26,7 +26,13 @@ async function main() {
   for (const card of Object.values(CARD_LIBRARY)) {
     await prisma.gameCard.upsert({
       where: { cardKey: card.id },
-      update: {},
+      // Refresh only the structural unlock-tree relations on existing rows so
+      // the "buy one -> unlock others" tree stays in sync with the code-defined
+      // CARD_TREE, while respecting any admin edits to the other fields.
+      update: {
+        requiresCards: card.requiresCards ?? [],
+        unlocksCards: card.unlocksCards ?? [],
+      },
       create: {
         cardKey: card.id,
         label: card.label as unknown as object,
@@ -44,6 +50,8 @@ async function main() {
         serviceCard: card.serviceCard ?? false,
         baseWeight: card.baseWeight ?? 1,
         isActive: true,
+        requiresCards: card.requiresCards ?? [],
+        unlocksCards: card.unlocksCards ?? [],
       },
     });
   }
