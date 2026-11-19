@@ -168,6 +168,7 @@ export interface OptionData {
   label: LocalizedText;
   description: LocalizedText;
   cost: number;
+  effort?: number;
   controls: ControlId[];
   immediate?: Record<string, number>;
   delayed?: Record<string, number>;
@@ -181,6 +182,12 @@ export interface OptionData {
   serviceCard?: boolean;
   revealsSignals?: string[];
   clarityDelta?: number;
+  requiresCards?: string[];
+  unlocksCards?: string[];
+  /** Cards that must be owned before this one is selectable (resolved labels). */
+  missingRequires?: { id: string; label: LocalizedText }[];
+  /** Cards this one unlocks (resolved labels). */
+  unlocks?: { id: string; label: LocalizedText }[];
   available: boolean;
   reason?: string;
 }
@@ -210,6 +217,7 @@ export interface TeamWorkspaceData {
     deadlineAt: string | null;
     budgetStart?: number;
     incomePerRound?: number;
+    effortPerRound?: number | null;
   };
   scenario: {
     name: LocalizedText;
@@ -220,6 +228,7 @@ export interface TeamWorkspaceData {
   state: {
     metrics: Metrics;
     budget: number;
+    effortRemaining?: number | null;
     version: number;
     status: string;
     flags: string[];

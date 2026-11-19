@@ -11,6 +11,7 @@ import {
   getVisibleSignals,
   initGameState,
   requiresCardsMet,
+  selectionProblem,
   simulatePlaythrough,
   validateScenario,
   EngineError,
@@ -424,5 +425,45 @@ describe('card relations and per-session overrides', () => {
     expect(b.cost).toBe(1);
     expect(b.scoreDelta).toBe(8);
     expect(scenario.cards!.find((c) => c.id === 'buy-a')!.cost).toBe(2);
+  });
+});
+
+describe('work-effort resource (KIPS-style)', () => {
+  it('initializes effortRemaining from economy.effortPerRound', () => {
+    expect(ransomwareScenario.economy?.effortPerRound).toBe(6);
+    const state = initGameState('t', ransomwareScenario);
+    expect(state.effortRemaining).toBe(6);
+  });
+
+  it('derives a numeric effort for every card in the hand', () => {
+    const state = initGameState('t', ransomwareScenario);
+    const event = getEvent(ransomwareScenario, state.currentEventId!);
+    const cards = getEventCards(ransomwareScenario, event, state);
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) expect(typeof card.effort).toBe('number');
+  });
+
+  it('rejects a selection whose combined effort exceeds the round allowance', () => {
+    const state = initGameState('t', ransomwareScenario);
+    const event = getEvent(ransomwareScenario, state.currentEventId!);
+    const cards = getEventCards(ransomwareScenario, event, state);
+    // Fixed cards have no requirements; picking all of them (effort 1 each) exceeds 6.
+    const fixed = cards.filter((c) => c.id.startsWith('fix-')).map((c) => c.id);
+    const effort = cards
+      .filter((c) => fixed.includes(c.id))
+      .reduce((acc, c) => acc + (c.effort ?? 0), 0);
+    expect(effort).toBeGreaterThan(6);
+    expect(selectionProblem(ransomwareScenario, event, state, fixed)).toBe('INSUFFICIENT_EFFORT');
+    expect(() => applyDecisions(ransomwareScenario, state, fixed)).toThrowError(/INSUFFICIENT_EFFORT|work-effort/);
+  });
+
+  it('resets the effort allowance each round after a valid decision', () => {
+    const state = initGameState('t', ransomwareScenario);
+    const event = getEvent(ransomwareScenario, state.currentEventId!);
+    const options = availableOptions(ransomwareScenario, event, state);
+    expect(options.length).toBeGreaterThan(0);
+    const result = applyDecision(ransomwareScenario, state, options[0]!.id);
+    // New round drawn => allowance reset to the full per-round value.
+    if (result.nextEventId) expect(result.state.effortRemaining).toBe(6);
   });
 });

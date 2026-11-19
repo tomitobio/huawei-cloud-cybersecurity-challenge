@@ -5,14 +5,27 @@ import { ensureScenario, createSession } from '../src/services/game';
 import { CARD_LIBRARY } from '@hcc/shared';
 
 async function main() {
-  // Fictional demo account. Change the password before any real use.
-  // Password can be rotated via env: SEED_ADMIN_PASSWORD
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Hcc-d25kuoAyPLMz1JVW0VoN!';
+  // Fictional demo account. This is the intended demo admin login; it can be
+  // overridden (e.g. for a real event) via SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD.
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? 'admin@admin.com';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'adminSOY4592';
+
+  // Migrate the old demo email to the configured one (keeps the same user row,
+  // so sessions/teams stay linked) if the target email doesn't exist yet.
+  const legacyEmail = 'admin@hcc.local';
+  if (adminEmail !== legacyEmail) {
+    const legacyUser = await prisma.user.findUnique({ where: { email: legacyEmail } });
+    const targetUser = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (legacyUser && !targetUser) {
+      await prisma.user.update({ where: { id: legacyUser.id }, data: { email: adminEmail } });
+    }
+  }
+
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@hcc.local' },
+    where: { email: adminEmail },
     update: { passwordHash: await hashPassword(adminPassword) },
     create: {
-      email: 'admin@hcc.local',
+      email: adminEmail,
       displayName: 'Platform Admin',
       role: 'ADMIN',
       passwordHash: await hashPassword(adminPassword),
@@ -26,7 +39,13 @@ async function main() {
   for (const card of Object.values(CARD_LIBRARY)) {
     await prisma.gameCard.upsert({
       where: { cardKey: card.id },
-      update: {},
+      // Refresh only the structural unlock-tree relations on existing rows so
+      // the "buy one -> unlock others" tree stays in sync with the code-defined
+      // CARD_TREE, while respecting any admin edits to the other fields.
+      update: {
+        requiresCards: card.requiresCards ?? [],
+        unlocksCards: card.unlocksCards ?? [],
+      },
       create: {
         cardKey: card.id,
         label: card.label as unknown as object,
@@ -44,6 +63,8 @@ async function main() {
         serviceCard: card.serviceCard ?? false,
         baseWeight: card.baseWeight ?? 1,
         isActive: true,
+        requiresCards: card.requiresCards ?? [],
+        unlocksCards: card.unlocksCards ?? [],
       },
     });
   }
@@ -78,7 +99,7 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log('[seed] Accounts:');
   // eslint-disable-next-line no-console
-  console.log(`  admin@hcc.local / ${adminPassword} (${admin.role})`);
+  console.log(`  ${adminEmail} / ${adminPassword} (${admin.role})`);
 }
 
 main()

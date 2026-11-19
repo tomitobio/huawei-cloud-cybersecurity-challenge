@@ -72,7 +72,7 @@ A team-based, turn-based **business + security simulation**:
 | --- | --- | --- |
 | Turn-based periods (5) | 6 rounds per scenario (`events[].round`) | ✅ aligned |
 | Money budget for whole game | `scenario.start.budget` + per-round `economy.incomePerRound` | ✅ (money only) |
-| **Work-effort per period** | *not modelled* (cards cost money only) | ⚠️ **opportunity** |
+| **Work-effort per period** | `economy.effortPerRound` (per-round cap) + per-card `effort` (explicit or derived) | ✅ **implemented** |
 | Limited action cards; audit/pentest unlock more | `scenario.cards` pool + `requires: { hasFlag: '*_funded' }` + `kind:'investigate'` | 🟡 partial |
 | News/threat-of-the-period | `event.narrative/intel` + `event.focusTags` weighting the draw | ✅ aligned |
 | Revenue reduced by attacks / downtime | `financial` + `continuity` metrics feeding `finalScore` | 🟡 partial (metric, not live revenue) |
@@ -89,7 +89,12 @@ A team-based, turn-based **business + security simulation**:
 > schema, UI and every scenario’s cards, so they should be scheduled deliberately (ideally
 > **after** the current QA baseline is signed off, or as a separate gameplay increment).
 
-1. **Second resource — “work effort” per round (P1, highest impact).**
+1. **✅ Implemented — Second resource — “work effort” per round (P1, highest impact).**
+   Added `economy.effortPerRound` and an optional `effort` on each card; the engine
+   enforces a per-round effort cap (money and effort are separate resources), the API/UI
+   expose an **Effort** bar next to Budget, and selections exceeding the allowance are
+   rejected (`INSUFFICIENT_EFFORT`). Effort is derived per card (service cards and
+   multi-control measures cost more than quick actions) unless explicitly set.
    Add `economy.effortPerRound` and an optional `effort` cost on each card; the engine
    rejects selections that exceed the remaining effort; UI shows an **Effort** bar next to
    Budget. This reproduces KIPS’s core prioritisation tension and makes the premium cards a

@@ -67,6 +67,13 @@ export interface DecisionOption {
   description: LocalizedText;
   /** Budget cost in workshop credits. */
   cost: number;
+  /**
+   * Work-effort units this card consumes in the round (KIPS-style second
+   * resource). When omitted it is derived from the card's nature (service cards
+   * and multi-control measures cost more effort than quick actions). Only
+   * enforced when the scenario sets `economy.effortPerRound`.
+   */
+  effort?: number;
   controls: ControlId[];
   /** Requirements that must be met for the option to be selectable. */
   requires?: Condition;
@@ -169,6 +176,13 @@ export interface DeckConfig {
 export interface EconomyConfig {
   /** Credits granted at the start of every round (helps teams not go broke). */
   incomePerRound: number;
+  /**
+   * Work-effort units available per round (KIPS-style). When set, the combined
+   * effort of a round's selected cards may not exceed it. Unlike money it is a
+   * per-round cap (it does not accumulate), modelling "you cannot do everything
+   * at once". Omitted => effort constraint is disabled (legacy behaviour).
+   */
+  effortPerRound?: number;
   /** Multipliers applied to premium cards whose tags hit the event focus. */
   focus?: { costMultiplier: number; scoreMultiplier: number };
   /** Minimum number of pool cards per event focus tag (validation hint). */
@@ -266,6 +280,8 @@ export interface RecordedDecision {
   optionIds?: string[];
   round: number;
   cost: number;
+  /** Work-effort units consumed by this decision (when the scenario uses effort). */
+  effort?: number;
 }
 
 /** Serializable game state for one team within one session. */
@@ -276,6 +292,12 @@ export interface GameStateData {
   flags: string[];
   metrics: Metrics;
   budget: number;
+  /**
+   * Work-effort units still available this round (KIPS-style). Resets to
+   * `economy.effortPerRound` at the start of each round and decremented when a
+   * decision is applied. Undefined when the scenario has no effort resource.
+   */
+  effortRemaining?: number;
   /** Accumulated explicit score contributions from decisions. */
   score: number;
   status: 'active' | 'ended';

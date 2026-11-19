@@ -276,17 +276,47 @@ export async function getTeamWorkspace(teamId: string) {
   const state = team.state ? asState(team.state.data) : initGameState(teamId, scenario, team.session.seed);
 
   const event = state.currentEventId ? getEvent(scenario, state.currentEventId) : null;
-  const options: (DecisionOption & { available: boolean; reason?: string })[] = event
+  // Resolve card labels for unlock-tree hints (what's blocking, what it unlocks).
+  const cardById = new Map((scenario.cards ?? []).map((c) => [c.id, c]));
+  const labelOf = (id: string) => cardById.get(id)?.label;
+  const owned = new Set(state.purchasedCards ?? []);
+  const options: (DecisionOption & {
+    available: boolean;
+    reason?: string;
+    missingRequires: { id: string; label: { es: string; en: string } }[];
+    unlocks: { id: string; label: { es: string; en: string } }[];
+  })[] = event
     ? getEventCards(scenario, event, state).map((o) => {
         const reqOk = conditionMet(o.requires, state);
         const relOk = requiresCardsMet(o, state);
         const budgetOk = state.budget >= o.cost;
-        const available = reqOk && relOk && budgetOk;
+        const effortOk =
+          typeof state.effortRemaining !== 'number' || (o.effort ?? 0) <= state.effortRemaining;
+        const available = reqOk && relOk && budgetOk && effortOk;
+        const missingRequires = (o.requiresCards ?? [])
+          .filter((id) => !owned.has(id))
+          .map((id) => ({ id, label: labelOf(id) }))
+          .filter((x): x is { id: string; label: { es: string; en: string } } => Boolean(x.label));
+        const unlocks = (o.unlocksCards ?? [])
+          .map((id) => ({ id, label: labelOf(id) }))
+          .filter((x): x is { id: string; label: { es: string; en: string } } => Boolean(x.label));
         return {
           ...o,
           // never expose instructor-only fields; options have none, but keep shape safe
           available,
-          reason: !reqOk ? 'requirements' : !relOk ? 'requires_cards' : !budgetOk ? 'budget' : undefined,
+          requiresCards: o.requiresCards ?? [],
+          unlocksCards: o.unlocksCards ?? [],
+          missingRequires,
+          unlocks,
+          reason: !reqOk
+            ? 'requirements'
+            : !relOk
+              ? 'requires_cards'
+              : !budgetOk
+                ? 'budget'
+                : !effortOk
+                  ? 'effort'
+                  : undefined,
         };
       })
     : [];
@@ -331,6 +361,7 @@ export async function getTeamWorkspace(teamId: string) {
       deadlineAt: team.session.deadlineAt,
       budgetStart: team.budgetStart,
       incomePerRound: scenario.economy?.incomePerRound ?? 0,
+      effortPerRound: scenario.economy?.effortPerRound ?? null,
     },
     scenario: {
       name: scenario.name,
@@ -341,6 +372,7 @@ export async function getTeamWorkspace(teamId: string) {
     state: {
       metrics: state.metrics,
       budget: state.budget,
+      effortRemaining: state.effortRemaining ?? null,
       version: state.version,
       status: state.status,
       flags: state.flags,
@@ -409,6 +441,7 @@ export async function submitDecision(
   }
   if (problem === 'REQUIREMENT_NOT_MET') throw ApiError.badRequest('Option requirements are not satisfied');
   if (problem === 'INSUFFICIENT_BUDGET') throw ApiError.badRequest('The combined cost exceeds the remaining budget');
+  if (problem === 'INSUFFICIENT_EFFORT') throw ApiError.badRequest('The combined work-effort exceeds the effort available this round');
 
   const cards = getEventCards(scenario, event, state);
   const chosen = ids.map((id) => cards.find((o) => o.id === id)!);

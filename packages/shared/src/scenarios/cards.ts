@@ -823,9 +823,86 @@ const POOL_CARDS: DecisionOption[] = [
   },
 ];
 
-/** All cards indexed by id. */
+/**
+ * Unlock tree ("árbol de capacidades").
+ *
+ * A single, explicit strategy applied to the whole library: each service family
+ * is a tree ROOT (the `*-enable` card that funds/activates the service) → N1
+ * (operate/specialise cards) → N2 (advanced cards). Roots declare what they
+ * `unlocksCards`; children declare their `requiresCards` parent. The engine
+ * (`requiresCardsMet` / `unlockedCardIds` / `prepareActiveEvent`) then turns this
+ * into gameplay: buying a root surfaces its children in future hands, and
+ * children stay locked until their parent is owned.
+ *
+ * Kept separate from the card literals so the whole tree can be read, audited
+ * and adjusted in one place.
+ */
+export const CARD_TREE: Record<
+  string,
+  { requiresCards?: string[]; unlocksCards?: string[] }
+> = {
+  // --- WAF: enable -> operate -> specialise -------------------------------
+  'waf-enable': { unlocksCards: ['waf-monitor', 'waf-tune', 'waf-injection', 'waf-anti-bot'] },
+  'waf-monitor': { requiresCards: ['waf-enable'] },
+  'waf-tune': { requiresCards: ['waf-enable'] },
+  'waf-injection': { requiresCards: ['waf-enable'], unlocksCards: ['waf-web-tampering'] },
+  'waf-anti-bot': { requiresCards: ['waf-enable'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'waf-web-tampering': { requiresCards: ['waf-enable', 'waf-injection'] },
+
+  // --- CFW: enable -> operate ---------------------------------------------
+  'cfw-enable': { unlocksCards: ['cfw-egress', 'cfw-segment', 'cfw-allowlist', 'cfw-scrub'] },
+  'cfw-egress': { requiresCards: ['cfw-enable'] },
+  'cfw-segment': { requiresCards: ['cfw-enable'] },
+  'cfw-allowlist': { requiresCards: ['cfw-enable'] },
+  'cfw-scrub': { requiresCards: ['cfw-enable'] },
+
+  // --- HSS: enable -> operate -> contain ----------------------------------
+  'hss-enable': { unlocksCards: ['hss-investigate', 'hss-patch', 'hss-baseline'] },
+  'hss-investigate': { requiresCards: ['hss-enable'], unlocksCards: ['hss-isolate'] },
+  'hss-patch': { requiresCards: ['hss-enable'] },
+  'hss-baseline': { requiresCards: ['hss-enable'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'hss-isolate': { requiresCards: ['hss-enable', 'hss-investigate'] },
+
+  // --- CBH: enable -> operate -> revoke -----------------------------------
+  'cbh-enable': { unlocksCards: ['cbh-audit', 'cbh-named'] },
+  'cbh-audit': { requiresCards: ['cbh-enable'], unlocksCards: ['cbh-revoke'] },
+  'cbh-named': { requiresCards: ['cbh-enable'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'cbh-revoke': { requiresCards: ['cbh-enable', 'cbh-audit'] },
+
+  // --- DEW: enable -> operate -> key lifecycle ----------------------------
+  'dew-enable': { unlocksCards: ['dew-encrypt', 'dew-secrets'] },
+  'dew-encrypt': { requiresCards: ['dew-enable'], unlocksCards: ['dew-keys'] },
+  'dew-secrets': { requiresCards: ['dew-enable'] },
+  // N2: needs the service AND a specific N1 card on the same service.
+  'dew-keys': { requiresCards: ['dew-enable', 'dew-encrypt'] },
+
+  // --- SecMaster: enable -> operate ---------------------------------------
+  'secmaster-enable': { unlocksCards: ['secmaster-correlate', 'soc-coordinate'] },
+  'secmaster-correlate': { requiresCards: ['secmaster-enable'] },
+  'soc-coordinate': { requiresCards: ['secmaster-enable'] },
+
+  // --- Recovery chain: verify -> restore ----------------------------------
+  'backup-verify': { unlocksCards: ['restore-clean'] },
+  'restore-clean': { requiresCards: ['backup-verify'] },
+};
+
+/** Merge the {@link CARD_TREE} relations into a card definition. */
+function withTreeRelations(card: DecisionOption): DecisionOption {
+  const rel = CARD_TREE[card.id];
+  if (!rel) return card;
+  return {
+    ...card,
+    requiresCards: rel.requiresCards ?? card.requiresCards,
+    unlocksCards: rel.unlocksCards ?? card.unlocksCards,
+  };
+}
+
+/** All cards indexed by id (with the unlock tree applied). */
 export const CARD_LIBRARY: Record<string, DecisionOption> = Object.fromEntries(
-  [...FIXED_CARDS, ...SERVICE_FIXED_CARDS, ...POOL_CARDS].map((card) => [card.id, card]),
+  [...FIXED_CARDS, ...SERVICE_FIXED_CARDS, ...POOL_CARDS].map((card) => [card.id, withTreeRelations(card)]),
 );
 
 export const POOL_CARD_IDS = POOL_CARDS.map((c) => c.id);
